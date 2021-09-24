@@ -44,7 +44,6 @@
 #include "GafferScene/ParentConstraint.h"
 #include "GafferScene/PointConstraint.h"
 #include "GafferScene/Transform.h"
-#include "GafferScene/TransformQuery.h"
 
 #include "GafferBindings/ComputeNodeBinding.h"
 
@@ -85,6 +84,8 @@ void GafferSceneModule::bindTransform()
 			.value( "BoundMin", Constraint::BoundMin )
 			.value( "BoundMax", Constraint::BoundMax )
 			.value( "BoundCenter", Constraint::BoundCenter )
+			.value( "UV", Constraint::UV )
+			.value( "Vertex", Constraint::Vertex )
 		;
 	}
 
@@ -102,16 +103,6 @@ void GafferSceneModule::bindTransform()
 			.value( "World", Transform::World )
 			.value( "ResetLocal", Transform::ResetLocal )
 			.value( "ResetWorld", Transform::ResetWorld )
-		;
-	}
-
-	{
-		scope s = GafferBindings::DependencyNodeClass<TransformQuery>();
-
-		enum_<TransformQuery::Space>( "Space" )
-			.value( "Local", TransformQuery::Space::Local )
-			.value( "World", TransformQuery::Space::World )
-			.value( "Relative", TransformQuery::Space::Relative )
 		;
 	}
 }

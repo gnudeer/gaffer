@@ -333,7 +333,8 @@ bool objectSamples( const ObjectPlug *objectPlug, const std::vector<float> &samp
 
 		if(
 			runTimeCast<const VisibleRenderable>( object.get() ) ||
-			runTimeCast<const Camera>( object.get() )
+			runTimeCast<const Camera>( object.get() ) ||
+			runTimeCast<const CoordinateSystem>( object.get() )
 		)
 		{
 			samples.push_back( object.get() );
@@ -361,7 +362,10 @@ bool objectSamples( const ObjectPlug *objectPlug, const std::vector<float> &samp
 		{
 			samples.push_back( object.get() );
 		}
-		else if( runTimeCast<const VisibleRenderable>( object.get() ) )
+		else if(
+			runTimeCast<const VisibleRenderable>( object.get() ) ||
+			runTimeCast<const CoordinateSystem>( object.get() )
+		)
 		{
 			// We can't motion blur these chappies, so just take the one
 			// sample. This must be at the frame time rather than shutter
@@ -1473,8 +1477,8 @@ ConstOutputPtr addGafferOutputHeaders( const Output *output, const ScenePlug *sc
 			default :
 				IECore::msg(
 					IECore::Msg::Debug,
-					"GafferScene::RendereAlgo",
-					boost::format(  "Unsupported data type for Context variable \"%s\" (%s), unable to add header" ) % name % data->typeName()
+					"GafferScene::RendererAlgo",
+					boost::format(  "Unsupported data type for Context variable \"%s\" (%s), unable to add this variable to output image header" ) % name % data->typeName()
 				);
 		};
 	}

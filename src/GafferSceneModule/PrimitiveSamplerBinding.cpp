@@ -41,6 +41,7 @@
 #include "GafferScene/ClosestPointSampler.h"
 #include "GafferScene/CurveSampler.h"
 #include "GafferScene/PrimitiveSampler.h"
+#include "GafferScene/UVSampler.h"
 
 #include "GafferBindings/DependencyNodeBinding.h"
 
@@ -55,5 +56,6 @@ void GafferSceneModule::bindPrimitiveSampler()
 	GafferBindings::DependencyNodeClass<GafferScene::PrimitiveSampler>();
 	GafferBindings::DependencyNodeClass<GafferScene::ClosestPointSampler>();
 	GafferBindings::DependencyNodeClass<GafferScene::CurveSampler>();
+	GafferBindings::DependencyNodeClass<GafferScene::UVSampler>();
 
 }

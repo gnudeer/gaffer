@@ -1,3 +1,209 @@
+0.60.7.0 (relative to 0.60.6.1)
+========
+
+Improvements
+------------
+
+- Spreadsheet : The popup editor for lists of items (e.g. scene paths) is now at least as wide as the spreadsheet column itself.
+- VectorDataWidget : Added <kbd>Backspace</kbd> shortcut for deleting the selected rows.
+- GraphEditor : Simplified logic for drawing strike-throughs on disabled nodes. The strike-through is now only drawn for nodes which have a constant value for their `enabled` plug. This avoids blocking the UI waiting for computes that drive the `enabled` plug, and avoids erroneously drawing the strike-through when the appropriate context to evaluate the plug in is not known.
+- Animation : Added compatibility for loading animation from Gaffer 0.61.
+
+Fixes
+-----
+
+- Viewer : Fixed drawing of CoordinateSystems (bug introduced in 0.60.0.0).
+- ErrorDialogue : Fixed Python 3 incompatibility in `displayException()`.
+
+0.60.6.1 (relative to 0.60.6.0)
+========
+
+Fixes
+-----
+
+- Fixed crash triggered by cancellation of long running computes (bug introduced in Gaffer 0.60.6.0).
+- Window : Fixed errors printed by floating child windows at shutdown (bug introduced in 0.60.3.0).
+- GraphEditor : Fixed annotation drawing glitch triggered by annotations with empty text. Empty annotations are now ignored.
+
+0.60.6.0 (relative to 0.60.5.0)
+========
+
+Improvements
+------------
+
+- Viewer : Added <kbd>PgDn</kbd> and <kbd>PgUp</kbd> hotkeys for switching to the previous and next image layer respectively.
+- Shader : Added "label" blindData which should be used in preference to "gaffer:nodeName" blindData.
+- ShaderAssignment : Added `label` plug to optionally override the shader's "label" blindData.
+
+Fixes
+-----
+
+- Fixed crash that could be triggered by exceptions being thrown during parallel evaluation. This could potentially happen while rendering Instancers where some locations were invalid.
+
+0.60.5.0 (relative to 0.60.4.0)
+========
+
+Improvements
+------------
+
+- PythonCommand : Added syntax highlighting and auto-complete.
+
+Fixes
+-----
+
+- Instancer :
+  - Fixed crash caused by engine being evicted from the cache.
+  - Fixed crash caused by points disappearing within the shutter range.
+
+0.60.4.0 (relative to 0.60.3.0)
+========
+
+Features
+--------
+
+- ArnoldAttributes : Added Displacement section with plugs for controlling Arnold's `disp_autobump` and `autobump_visibility` parameters.
+
+Fixes
+-----
+
+- GraphEditor : The Dot created when you <kbd>Ctrl</kbd>+click on a connection is now selected automatically, so it can be repositioned by an immediate drag.
+- MetadataAlgo : Numeric bookmarks are no longer loaded inside nodes with `childNodesAreReadOnly` metadata, to prevent them "stealing" bookmarks from other nodes. Previously this only applied to nodes inside References.
+- Reference :
+  - Moved the `childNodesAreReadOnly` metadata registration to the Gaffer module, so it applies even without `GafferUI` being imported.
+  - Prevented `childNodesAreReadOnly` metadata baked into a referenced file from overriding the Reference node's own metadata.
+
+Breaking Changes
+----------------
+
+- ArnoldDisplacement : Deprecated the `autoBump` plug, use `ArnoldAttributes.autoBump` instead.
+
+Build
+-----
+
+- Updated to GafferHQ/dependencies 3.1.0 :
+  - Fixed missing `ssl` module in Python 3 builds.
+  - USD : Enabled OpenVDB support.
+- Added `BOOST_PYTHON_LIB_SUFFIX` option. This matches the approach used in Cortex.
+
+0.60.3.0 (relative to 0.60.2.1)
+========
+
+Features
+--------
+
+- Drag and drop : Added <kbd>G</kbd> hotkey for starting and stopping drags without using buttons on the mouse or stylus. This can be used for any drag and drop operation in Gaffer, including making connections in the GraphEditor. Press <kbd>G</kbd> to start a drag, and press <kbd>G</kbd> again to drop.
+
+Improvements
+------------
+
+- PythonEditor :
+  - Added syntax highlighting and tab completion.
+  - Added <kbd>Ctrl</kbd> + <kbd>]</kbd> hotkey for indenting and <kbd>Ctrl</kbd> + <kbd>[</kbd> for unindenting the selection.
+  - Added <kbd>Ctrl</kbd> + <kbd>/</kbd> hotkey for commenting and uncommenting the selection.
+  - Added context menus to input and output widgets.
+  - All Gaffer and IECore modules are now imported by default.
+- UIEditor : Added syntax highlighting and tab completion to the code editor for button widgets.
+- OSLCode : Added syntax highlighting.
+- ImageMetadata : Added `extraMetadata` plug, which is useful for generating arbitrary metadata from an expression, and for using types which are not supported by the standard `metadata` plug (timecodes for instance).
+
+Fixes
+-----
+
+- ImageReader/ImageWriter : The `name`, `oiio:subimagename` and `oiio:subimages` metadata items are now ignored because they are ambiguous, and caused ImageWriter to write incorrect images. The same information is available in Gaffer via the image's `channelNames`.
+
+Fixes
+-----
+
+- GraphEditor : Fixed bug in <key>D</key> shortcut.
+
+API
+---
+
+- CodeWidget : Added new class for displaying/editing code.
+- PlugLayout : Added a warning for plugs that reference activators that have not been registered.
+- ImageTestCase : Added `ignoreChannelNamesOrder` keyword argument to `assertImagesEqual()`. This defaults to `False`, maintaining the previous behaviour.
+- MultiLineTextWidget : Added `cursorBound()` method.
+- WidgetAlgo : `joinEdges()` now accepts an arbitrary list of widgets rather than requiring a `ListContainer`. In this case, the orientation must be passed as an additional argument.
+- PythonEditor : Added a `namespace()` method, which returns the globals/locals used by `execute()`.
+
+0.60.2.1 (relative to 0.60.2.0)
+========
+
+Fixes
+-----
+
+- Shader : Fixed metadata signalling performance issue that could cause very poor load times for scripts containing many Shader nodes.
+- GraphEditor : Removed unnecessary metadata tracking overhead.
+
+0.60.2.0 (relative to 0.60.1.0)
+========
+
+Features
+--------
+
+- UVSampler : Added a new node sampling primitive variables from specific UV positions on a source object.
+- Saturation : Added a new node to adjust image saturation.  This could previously be done using the CDL node, but using a specific node is sometimes clearer.
+
+Improvements
+------------
+
+- Render : In addition to the compute cache, the hash cache is now cleared prior to rendering.
+- Spreadsheet : Added interim support for adding a `Spreadsheet::RowsPlug` to a custom node. The previous doubling up of columns on reload can now be avoided by registering `False` for the new `spreadsheet:columnsNeedSerialisation` metadata item.
+
+Fixes
+-----
+
+- Viewer : Fixed bug which prevented the "Expand Selection Fully" operation from working.
+- Timeline : Fixed errors when the end frame is the same as the start frame (#4294).
+- GafferUI : Fixed edge artifacts when rendering transparent icons.
+- Render : Added workaround for hangs caused by specific chains of Expressions being evaluated after completion of the render.
+- NodeEditor : Fixed `Internal C++ object already deleted` errors in Python 3 builds.
+- Merge : Fixed failure to update when only the dataWindow of an input changed.
+
+Build
+-----
+
+- Cortex : Updated to version 10.2.2.0.
+
+0.60.1.0 (relative to 0.60.0.0)
+========
+
+Features
+--------
+
+- AttributeQuery : Added a new node for querying the value of an attribute at a location.
+- Constraint : New target modes constrain to a vertex id or uv coordinate.
+
+Improvements
+------------
+
+- SceneReader/SceneWriter : Added limited support for reading and writing custom attributes via USD. Currently attributes are only supported if they are marked as `custom` in the USD file, and if their name contains a colon-delimited namespace, for example `custom int foo:bar = 10`.
+- Spreadsheet :
+  - Added tooltips for column headers and sections. These can be edited using the new "Set Description..."
+    option in the right-click popup menus.
+  - Removed distracting "rows" tooltip.
+  - Added value tooltips for boolean cells.
+  - Added "Empty" tooltip for empty array values.
+  - Fixed status bar to use the custom column label if it exists.
+- UVInspector : Added ability to drag and drop UV values out of the inspector.
+- Process : Added warning messages for processes which don't respond promptly to cancellation.
+- Expression : Added "Show Name" menu item to GraphEditor context menu.
+
+Fixes
+-----
+
+- Render : Fixed typo and improved clarity of warning when a context variable can't be added to an image header.
+
+API
+---
+
+- TextInputDialogue : Added `multiLine` constructor argument, to allow input of multi-line values.
+
+Build
+-----
+
+- Cortex : Updated to version 10.2.1.0.
+
 0.60.0.0
 ========
 
@@ -162,6 +368,39 @@ Build
   - LLVM 10.0.1.
   - OpenVDB 7.2.2.
   - Cortex 10.2.0.0.
+
+0.59.9.4 (relative to 0.59.9.3)
+========
+
+Fixes
+-----
+
+- Reference : Added support for Spreadsheets promoted inside another plug.
+
+0.59.9.3 (relative to 0.59.9.2)
+========
+
+Fixes
+-----
+
+- Shader : Fixed metadata signalling performance issue that could cause very poor load times for scripts containing many Shader nodes.
+- GraphEditor : Removed unnecessary metadata tracking overhead.
+
+0.59.9.2 (relative to 0.59.9.1)
+========
+
+Fixes
+-----
+
+- Merge : Fixed failure to update when only the dataWindow of an input changed.
+
+0.59.9.1 (relative to 0.59.9.0)
+========
+
+Fixes
+-----
+
+- ArnoldShader : Fixed loading of shaders with matrix outputs.
 
 0.59.9.0 (relative to 0.59.8.0)
 ========

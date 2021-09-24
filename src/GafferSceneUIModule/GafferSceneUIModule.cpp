@@ -42,6 +42,7 @@
 #include "ToolBinding.h"
 #include "ViewBinding.h"
 #include "VisualiserBinding.h"
+#include "QueryBinding.h"
 
 using namespace GafferSceneUIModule;
 
@@ -54,5 +55,6 @@ BOOST_PYTHON_MODULE( _GafferSceneUI )
 	bindHierarchyView();
 	bindSceneGadget();
 	bindContextAlgo();
+	bindQueries();
 
 }

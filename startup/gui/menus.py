@@ -303,6 +303,7 @@ nodeMenu.append( "/Scene/Object/Mesh Distortion", GafferScene.MeshDistortion, se
 nodeMenu.append( "/Scene/Object/Camera Tweaks", GafferScene.CameraTweaks, searchText = "CameraTweaks" )
 nodeMenu.append( "/Scene/Object/Curve Sampler", GafferScene.CurveSampler, searchText = "CurveSampler" )
 nodeMenu.append( "/Scene/Object/Closest Point Sampler", GafferScene.ClosestPointSampler, searchText = "ClosestPointSampler" )
+nodeMenu.append( "/Scene/Object/UV Sampler", GafferScene.UVSampler, searchText = "UVSampler" )
 nodeMenu.append( "/Scene/Attributes/Shader Assignment", GafferScene.ShaderAssignment, searchText = "ShaderAssignment" )
 nodeMenu.append( "/Scene/Attributes/Shader Tweaks", GafferScene.ShaderTweaks, searchText = "ShaderTweaks" )
 nodeMenu.append( "/Scene/Attributes/Standard Attributes", GafferScene.StandardAttributes, searchText = "StandardAttributes" )
@@ -347,6 +348,7 @@ nodeMenu.append( "/Scene/Utility/Filter Query", GafferScene.FilterQuery, searchT
 nodeMenu.append( "/Scene/Utility/Transform Query", GafferScene.TransformQuery, searchText = "TransformQuery" )
 nodeMenu.append( "/Scene/Utility/Bound Query", GafferScene.BoundQuery, searchText = "BoundQuery" )
 nodeMenu.append( "/Scene/Utility/Existence Query", GafferScene.ExistenceQuery, searchText = "ExistenceQuery" )
+nodeMenu.append( "/Scene/Utility/Attribute Query", GafferScene.AttributeQuery, searchText = "AttributeQuery" )
 
 # Image nodes
 
@@ -368,6 +370,7 @@ nodeMenu.append( "/Image/Color/DisplayTransform", GafferImage.DisplayTransform )
 nodeMenu.append( "/Image/Color/LUT", GafferImage.LUT )
 nodeMenu.append( "/Image/Color/Premultiply", GafferImage.Premultiply )
 nodeMenu.append( "/Image/Color/Unpremultiply", GafferImage.Unpremultiply )
+nodeMenu.append( "/Image/Color/Saturation", GafferImage.Saturation )
 nodeMenu.append( "/Image/Filter/Blur", GafferImageUI.BlurUI.nodeMenuCreateCommand )
 nodeMenu.append( "/Image/Filter/Median", GafferImageUI.MedianUI.nodeMenuCreateCommand )
 nodeMenu.append( "/Image/Filter/Erode", GafferImageUI.ErodeUI.nodeMenuCreateCommand )

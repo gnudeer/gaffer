@@ -49,6 +49,7 @@
 #include "GafferUI/StandardNodule.h"
 #include "GafferUI/Style.h"
 
+#include "Gaffer/ComputeNode.h"
 #include "Gaffer/DependencyNode.h"
 #include "Gaffer/Metadata.h"
 #include "Gaffer/MetadataAlgo.h"
@@ -340,7 +341,7 @@ StandardNodeGadget::StandardNodeGadget( Gaffer::NodePtr node )
 		l->leaveSignal().connect( boost::bind( &StandardNodeGadget::leave, this, ::_1 ) );
 	}
 
-	Metadata::nodeValueChangedSignal().connect( boost::bind( &StandardNodeGadget::nodeMetadataChanged, this, ::_1, ::_2, ::_3 ) );
+	Metadata::nodeValueChangedSignal( node.get() ).connect( boost::bind( &StandardNodeGadget::nodeMetadataChanged, this, ::_2 ) );
 
 	// do our first update
 	////////////////////////////////////////////////////////
@@ -759,18 +760,8 @@ ConnectionCreator *StandardNodeGadget::closestDragDestination( const DragDropEve
 	return result;
 }
 
-void StandardNodeGadget::nodeMetadataChanged( IECore::TypeId nodeTypeId, IECore::InternedString key, const Gaffer::Node *node )
+void StandardNodeGadget::nodeMetadataChanged( IECore::InternedString key )
 {
-	if( node && node != this->node() )
-	{
-		return;
-	}
-
-	if( !this->node()->isInstanceOf( nodeTypeId ) )
-	{
-		return;
-	}
-
 	if( key == g_colorKey )
 	{
 		if( updateUserColor() )
@@ -842,17 +833,17 @@ void StandardNodeGadget::updateNodeEnabled( const Gaffer::Plug *dirtiedPlug )
 		return;
 	}
 
+	const ValuePlug *source = enabledPlug->source<ValuePlug>();
 	bool enabled = true;
-	try
+	if( source->direction() != Plug::Out || !IECore::runTimeCast<const ComputeNode>( source->node() ) )
 	{
+		// Only evaluate `enabledPlug` if it won't trigger a compute.
+		// We don't want to hang the UI waiting, and we don't really
+		// know what context to perform the compute in anyway.
+		/// \todo We could consider doing this in the background, using
+		/// an upstream traversal from the focus node to determine context.
 		enabled = enabledPlug->getValue();
 	}
-	catch( const std::exception &e )
-	{
-		// The error will be reported via Node::errorSignal() anyway.
-		return;
-	}
-
 
 	if( enabled == m_nodeEnabled )
 	{

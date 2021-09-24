@@ -421,6 +421,99 @@ void testTaskMutexWorkerExceptions()
 
 }
 
+void testTaskMutexDontSilentlyCancel()
+{
+	struct TestCancelled
+	{
+	};
+
+	std::atomic_bool incorrectlyCancelled( false );
+
+	auto runOrThrow = [&]( bool error ) {
+
+		std::this_thread::sleep_for( std::chrono::milliseconds( 1 ) );
+
+		if( error )
+		{
+			throw TestCancelled();
+		}
+
+		bool completed = false;
+
+		// This lock.execute should simply run the functor, since we're creating a fresh
+		// mutex that can't possibly have any contention.  But the tbb machinery we're
+		// using implicitly does a check if the task group has been cancelled, which
+		// means that if one of the other tasks in the parallel_for has thrown an
+		// exception, the task group may have been cancelled, and this will not actually
+		// execute the functor.  It should, in that case, throw IECore::Cancelled.
+		TaskMutex mutex;
+		TaskMutex::ScopedLock lock( mutex );
+		lock.execute(
+			[&]() {
+				completed = true;
+			}
+		);
+
+		// If we haven't thrown an exception yet, then the function should have run
+		// A cancellation of the parent task shouldn't silently halt the lock.execute
+		if( !completed )
+		{
+			incorrectlyCancelled = true;
+		}
+	};
+
+	try
+	{
+		tbb::parallel_for(
+			0, 1000,
+			[&runOrThrow] ( int i ) {
+				runOrThrow( ( i % 10 ) == 9 );
+			}
+		);
+	}
+	catch( TestCancelled &e )
+	{
+	}
+
+	GAFFERTEST_ASSERT( !incorrectlyCancelled.load() );
+}
+
+void testTaskMutexCancellation()
+{
+	TaskMutex mutex;
+
+	auto executeWithLock = [&mutex] () {
+
+		TaskMutex::ScopedLock lock( mutex );
+		lock.execute(
+			[] () { std::this_thread::sleep_for( std::chrono::milliseconds( 10 ) ); }
+		);
+
+	};
+
+	// Launch many tasks that all acquire the same mutex and call `execute()`.
+
+	tbb::task_group_context context;
+	tbb::parallel_for(
+		0, 10000,
+		[&executeWithLock, &context] ( int i ) {
+			executeWithLock();
+			if( i % 10 == 9 )
+			{
+				// Once a few tasks are launched, cancel the execution
+				// of the `parallel_for()`. This will cause TBB to cancel
+				// calls to `execute()` so that they don't run the functor.
+				// This exposed a bug whereby cancellation left the TaskMutex
+				// in an invalid state, triggering a debug assertion in
+				// `execute()`.
+				context.cancel_group_execution();
+			}
+		},
+		context
+	);
+
+}
+
 } // namespace
 
 void GafferTestModule::bindTaskMutexTest()
@@ -433,4 +526,6 @@ void GafferTestModule::bindTaskMutexTest()
 	def( "testTaskMutexAcquireOr", &testTaskMutexAcquireOr );
 	def( "testTaskMutexExceptions", &testTaskMutexExceptions );
 	def( "testTaskMutexWorkerExceptions", &testTaskMutexWorkerExceptions );
+	def( "testTaskMutexDontSilentlyCancel", &testTaskMutexDontSilentlyCancel );
+	def( "testTaskMutexCancellation", &testTaskMutexCancellation );
 }

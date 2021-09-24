@@ -35,6 +35,7 @@
 #ifndef IECOREPREVIEW_TASKMUTEX_H
 #define IECOREPREVIEW_TASKMUTEX_H
 
+#include "IECore/Canceller.h"
 #include "IECore/RefCounted.h"
 
 #include "boost/container/flat_set.hpp"
@@ -187,17 +188,20 @@ class TaskMutex : boost::noncopyable
 						}
 					};
 
+					boost::optional<tbb::task_group_status> status;
 					m_mutex->m_executionState->arena.execute(
-						[this, &fWrapper] {
+						[this, &fWrapper, &status] {
 							// Prior to TBB 2018 Update 3, `run_and_wait()` is buggy,
 							// causing calls to `wait()` on other threads to return
 							// immediately rather than do the work we want. Use
 							// `static_assert()` to ensure we never build with a buggy
 							// version.
 							static_assert( TBB_INTERFACE_VERSION >= 10003, "Minumum of TBB 2018 Update 3 required" );
-							m_mutex->m_executionState->taskGroup.run_and_wait( fWrapper );
+							status = m_mutex->m_executionState->taskGroup.run_and_wait( fWrapper );
 						}
 					);
+
+					assert( (bool)status );
 
 					executionStateLock.acquire( m_mutex->m_executionStateMutex );
 					m_mutex->m_executionState = nullptr;
@@ -205,6 +209,10 @@ class TaskMutex : boost::noncopyable
 					if( exception )
 					{
 						std::rethrow_exception( exception );
+					}
+					else if( status.value() == tbb::task_group_status::canceled )
+					{
+						throw IECore::Cancelled();
 					}
 				}
 
