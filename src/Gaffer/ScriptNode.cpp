@@ -239,6 +239,81 @@ const IECore::InternedString g_framesPerSecond( "framesPerSecond" );
 
 } // namespace
 
+
+// \todo : Should we merge this with NumericBookmarkSet?
+class ScriptNode::FocusSet : public Gaffer::Set
+{
+
+	public :
+
+		IE_CORE_DECLARERUNTIMETYPEDEXTENSION( Gaffer::ScriptNode::FocusSet, ScriptNodeFocusSetTypeId, Gaffer::Set );
+
+		void setNode( Node *node )
+		{
+			if( node != m_node )
+			{
+				if( m_node )
+				{
+					NodePtr oldNode = m_node;
+					m_node.reset();
+					oldNode->parentChangedSignal().disconnect( boost::bind( &FocusSet::parentChanged, this, ::_1 ) );
+					memberRemovedSignal()( this, oldNode.get() );
+				}
+
+				m_node = node;
+
+				if( node )
+				{
+					node->parentChangedSignal().connect( boost::bind( &FocusSet::parentChanged, this, ::_1 ) );
+					memberAddedSignal()( this, node );
+				}
+			}
+		}
+
+		Node *getNode() const
+		{
+			return m_node.get();
+		}
+
+		/// @name Set interface
+		////////////////////////////////////////////////////////////////////
+		//@{
+		bool contains( const Member *object ) const override
+		{
+			return m_node && m_node.get() == object;
+		}
+
+		Member *member( size_t index ) override
+		{
+			return m_node.get();
+		}
+
+		const Member *member( size_t index ) const override
+		{
+			return m_node.get();
+		}
+
+		size_t size() const override
+		{
+			return m_node ? 1 : 0;
+		}
+		//@}
+
+		void parentChanged( GraphComponent *member )
+		{
+			assert( member == m_node );
+			if( !m_node->parent() )
+			{
+				setNode( nullptr );
+			}
+		}
+
+	private :
+
+		Gaffer::NodePtr m_node;
+};
+
+
 //////////////////////////////////////////////////////////////////////////
 // ScriptNode implementation
 //////////////////////////////////////////////////////////////////////////
@@ -253,6 +328,7 @@ ScriptNode::ScriptNode( const std::string &name )
 	:
 	Node( name ),
 	m_selection( new StandardSet( /* removeOrphans = */ true ) ),
+	m_focus( new FocusSet() ),
 	m_undoIterator( m_undoList.end() ),
 	m_currentActionStage( Action::Invalid ),
 	m_executing( false ),
@@ -401,6 +477,45 @@ const StandardSet *ScriptNode::selection() const
 	return m_selection.get();
 }
 
+void ScriptNode::setFocus( Node *node )
+{
+	if( node == m_focus->getNode() )
+	{
+		return;
+	}
+	if( node && !this->isAncestorOf( node ) )
+	{
+		throw IECore::Exception( boost::str( boost::format( "%s is not a child of this script" ) % node->fullName() ) );
+	}
+	m_focus->setNode( node );
+	focusChangedSignal()( this, node );
+}
+
+Node *ScriptNode::getFocus()
+{
+	return m_focus->getNode();
+}
+
+const Node *ScriptNode::getFocus() const
+{
+	return m_focus->getNode();
+}
+
+ScriptNode::FocusChangedSignal &ScriptNode::focusChangedSignal()
+{
+	return m_focusChangedSignal;
+}
+
+Set *ScriptNode::focusSet()
+{
+	return m_focus.get();
+}
+
+const Set *ScriptNode::focusSet() const
+{
+	return m_focus.get();
+}
+
 void ScriptNode::pushUndoState( UndoScope::State state, const std::string &mergeGroup )
 {
 	if( m_undoStateStack.size() == 0 )
@@ -476,6 +591,14 @@ void ScriptNode::popUndoState()
 
 }
 
+void ScriptNode::postActionStageCleanup()
+{
+	m_currentActionStage = Action::Invalid;
+
+	UndoScope undoDisabled( this, UndoScope::Disabled );
+	unsavedChangesPlug()->setValue( true );
+}
+
 bool ScriptNode::undoAvailable() const
 {
 	return m_currentActionStage == Action::Invalid && m_undoIterator != m_undoList.begin();
@@ -492,28 +615,21 @@ void ScriptNode::undo()
 
 	m_currentActionStage = Action::Undo;
 
-		m_undoIterator--;
-		(*m_undoIterator)->undoAction();
+	try
+	{
+		// NOTE : Decrement the undo iterator if undoAction() completes without throwing an exception
 
-	/// \todo It's conceivable that an exception from somewhere in
-	/// Action::undoAction() could prevent this cleanup code from running,
-	/// leaving us in a bad state. This could perhaps be addressed
-	/// by using BOOST_SCOPE_EXIT. The most likely cause of such an
-	/// exception would be in an errant slot connected to a signal
-	/// triggered by the action performed. However, currently most
-	/// python slot callers suppress python exceptions (printing
-	/// them to the shell), so it's not even straightforward to
-	/// write a test case for this potential problem. It could be
-	/// argued that we shouldn't be suppressing exceptions in slots,
-	/// but if we don't then well-behaved (and perhaps crucial) slots
-	/// might not get called when badly behaved slots mess up. It seems
-	/// best to simply report errors as we do, and allow the well behaved
-	/// slots to have their turn - we might even want to extend this
-	/// behaviour to the c++ slots.
-	m_currentActionStage = Action::Invalid;
+		UndoIterator it = m_undoIterator;
+		(*(--it))->undoAction();
+		m_undoIterator = it;
+	}
+	catch( ... )
+	{
+		postActionStageCleanup();
+		throw;
+	}
 
-	UndoScope undoDisabled( this, UndoScope::Disabled );
-	unsavedChangesPlug()->setValue( true );
+	postActionStageCleanup();
 }
 
 bool ScriptNode::redoAvailable() const
@@ -532,13 +648,18 @@ void ScriptNode::redo()
 
 	m_currentActionStage = Action::Redo;
 
+	try
+	{
 		(*m_undoIterator)->doAction();
-		m_undoIterator++;
+		++m_undoIterator;
+	}
+	catch( ... )
+	{
+		postActionStageCleanup();
+		throw;
+	}
 
-	m_currentActionStage = Action::Invalid;
-
-	UndoScope undoDisabled( this, UndoScope::Disabled );
-	unsavedChangesPlug()->setValue( true );
+	postActionStageCleanup();
 }
 
 Action::Stage ScriptNode::currentActionStage() const

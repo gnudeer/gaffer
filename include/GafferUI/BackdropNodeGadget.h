@@ -70,7 +70,9 @@ class GAFFERUI_API BackdropNodeGadget : public NodeGadget
 
 	protected :
 
-		void doRenderLayer( Layer layer, const Style *style ) const override;
+		void renderLayer( Layer layer, const Style *style, RenderReason reason ) const override;
+		unsigned layerMask() const override;
+		Imath::Box3f renderBound() const override;
 
 	private :
 
@@ -109,11 +111,6 @@ class GAFFERUI_API BackdropNodeGadget : public NodeGadget
 };
 
 IE_CORE_DECLAREPTR( BackdropNodeGadget );
-
-[[deprecated("Use `BackdropNodeGadget::Iterator` instead")]]
-typedef Gaffer::FilteredChildIterator<Gaffer::TypePredicate<BackdropNodeGadget> > BackdropNodeGadgetIterator;
-[[deprecated("Use `BackdropNodeGadget::RecursiveIterator` instead")]]
-typedef Gaffer::FilteredRecursiveChildIterator<Gaffer::TypePredicate<BackdropNodeGadget> > RecursiveBackdropNodeGadgetIterator;
 
 } // namespace GafferUI
 

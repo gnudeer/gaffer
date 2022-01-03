@@ -56,11 +56,9 @@ namespace GafferUI
 
 class GAFFERUI_API AnimationGadget : public Gadget
 {
-
 	public :
 
 		AnimationGadget();
-
 		~AnimationGadget() override;
 
 		GAFFER_GRAPHCOMPONENT_DECLARE_TYPE( GafferUI::AnimationGadget, AnimationGadgetTypeId, Gadget );
@@ -74,13 +72,24 @@ class GAFFERUI_API AnimationGadget : public Gadget
 		void setContext( Gaffer::Context *context );
 		Gaffer::Context *getContext() const;
 
+		Gaffer::Set *selectedKeys();
+		const Gaffer::Set *selectedKeys() const;
+
+		bool onTimeAxis( const IECore::LineSegment3f& line ) const;
+		bool onValueAxis( const IECore::LineSegment3f& line ) const;
+
 		std::string getToolTip( const IECore::LineSegment3f &line ) const override;
 
 	protected :
 
-		void doRenderLayer( Layer layer, const Style *style ) const override;
+		void renderLayer( Layer layer, const Style *style, RenderReason reason ) const override;
+		unsigned layerMask() const override;
+		Imath::Box3f renderBound() const override;
 
 	private :
+
+		struct SelectionSet;
+		IE_CORE_DECLAREPTR( SelectionSet )
 
 		/// \undoable
 		void insertKeyframe( Gaffer::Animation::CurvePlug *curvePlug, float time );
@@ -89,7 +98,11 @@ class GAFFERUI_API AnimationGadget : public Gadget
 		/// \undoable
 		void removeKeyframes();
 		/// \undoable
+		void removeInactiveKeyframes();
+		/// \undoable
 		void moveKeyframes( const Imath::V2f currentDragOffset );
+		/// \undoable
+		void moveTangent( const Imath::V2f currentDragOffset );
 
 		void frame();
 
@@ -110,6 +123,8 @@ class GAFFERUI_API AnimationGadget : public Gadget
 		// Find elements at certain positions
 		Gaffer::Animation::ConstKeyPtr keyAt( const IECore::LineSegment3f &position ) const;
 		Gaffer::Animation::KeyPtr keyAt( const IECore::LineSegment3f &position );
+		std::pair<Gaffer::Animation::ConstKeyPtr, Gaffer::Animation::Direction> tangentAt( const IECore::LineSegment3f &position ) const;
+		std::pair<Gaffer::Animation::KeyPtr, Gaffer::Animation::Direction> tangentAt( const IECore::LineSegment3f &position );
 		Gaffer::Animation::ConstCurvePlugPtr curveAt( const IECore::LineSegment3f &position ) const;
 		Gaffer::Animation::CurvePlugPtr curveAt( const IECore::LineSegment3f &position );
 		bool frameIndicatorUnderMouse( const IECore::LineSegment3f &position ) const;
@@ -128,16 +143,18 @@ class GAFFERUI_API AnimationGadget : public Gadget
 
 		std::string undoMergeGroup() const;
 
-		bool onTimeAxis( int y ) const;
-		bool onValueAxis( int x ) const;
-
 		Gaffer::Context *m_context;
 
 		Gaffer::StandardSetPtr m_visiblePlugs;
 		Gaffer::StandardSetPtr m_editablePlugs;
 
-		std::set<Gaffer::Animation::KeyPtr> m_selectedKeys;
-		std::map<const Gaffer::Animation::Key*, std::pair<float, float> > m_originalKeyValues;
+		SelectionSetPtr m_selectedKeys;
+
+		std::map< const Gaffer::Animation::Key*, std::pair< float, float > > m_originalKeyValues;
+
+		Gaffer::Animation::KeyPtr m_dragTangentKey;
+		Gaffer::Animation::Direction m_dragTangentDirection;
+		double m_dragTangentOriginalScale;
 
 		Imath::V2f m_dragStartPosition;
 		Imath::V2f m_lastDragPosition;
@@ -147,7 +164,8 @@ class GAFFERUI_API AnimationGadget : public Gadget
 			None,
 			Selecting,
 			Moving,
-			MoveFrame
+			MoveFrame,
+			MoveTangent
 		};
 
 		DragMode m_dragMode;
@@ -165,8 +183,8 @@ class GAFFERUI_API AnimationGadget : public Gadget
 		Gaffer::Animation::KeyPtr m_snappingClosestKey;
 		Gaffer::Animation::KeyPtr m_highlightedKey;
 		Gaffer::Animation::CurvePlugPtr m_highlightedCurve;
-
-		std::set<std::pair<Gaffer::Animation::KeyPtr, Gaffer::Animation::CurvePlugPtr> > m_overwrittenKeys;
+		Gaffer::Animation::KeyPtr m_highlightedTangentKey;
+		Gaffer::Animation::Direction m_highlightedTangentDirection;
 
 		int m_mergeGroupId;
 

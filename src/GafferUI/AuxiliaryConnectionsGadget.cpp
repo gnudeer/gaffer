@@ -299,7 +299,7 @@ std::string AuxiliaryConnectionsGadget::getToolTip( const IECore::LineSegment3f 
 	return s;
 }
 
-void AuxiliaryConnectionsGadget::doRenderLayer( Layer layer, const Style *style ) const
+void AuxiliaryConnectionsGadget::renderLayer( Layer layer, const Style *style, RenderReason reason ) const
 {
 	if( layer != GraphLayer::Connections )
 	{
@@ -311,6 +311,18 @@ void AuxiliaryConnectionsGadget::doRenderLayer( Layer layer, const Style *style 
 	{
 		renderConnection( c, style );
 	}
+}
+
+unsigned AuxiliaryConnectionsGadget::layerMask() const
+{
+	return (unsigned)GraphLayer::Connections;
+}
+
+Box3f AuxiliaryConnectionsGadget::renderBound() const
+{
+	Box3f b;
+	b.makeInfinite();
+	return b;
 }
 
 void AuxiliaryConnectionsGadget::renderConnection( const AuxiliaryConnection &c, const Style *style ) const

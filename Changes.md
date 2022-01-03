@@ -1,3 +1,270 @@
+0.61.1.1 (relative to 0.61.1.0)
+========
+
+Fixes
+-----
+
+- InteractiveArnoldRender : Fixed Arnold 7 crash when stopping a render with global AOV shaders.
+
+0.61.1.0 (relative to 0.61.0.0)
+========
+
+Improvements
+------------
+
+- OSLCode : Improved error reporting for cases where empty `.oso` files are produced.
+
+Fixes
+-----
+
+- HierarchyView : Fixed unwanted expansion when an item is selected.
+- Viewer : Fixed scroll wheel handling for overlay widgets. In particular this means that the mouse wheel can now be used to scroll through the parameters of the scene inspector.
+- GraphEditor : Fixed highlighting of input connections for promoted ArrayPlugs.
+- BranchCreator : Fixed bug in bounding box computation which could cause excessive evaluation of the input scene.
+
+API
+---
+
+- PathListingWidget : Added `columnAt()` method.
+
+0.61.0.0
+========
+
+Features
+--------
+
+- Arnold : Added support for Arnold 7, including multiple simultaneous interactive renders. This is in addition to continuing support for Arnold 6.2 - the appropriate version of GafferArnold is chosen automatically on startup based on the `$ARNOLD_ROOT` environment variable.
+- GraphEditor :
+  - Added new "Focus Node" concept. Clicking on the top right of a node tags it as the focus node, and editors and viewers can be set to follow the focus node. This is useful when you have several viewers that you want to view the same node, but you don't want them to follow selection.
+  - Nodes and connections which don't contribute to computing the Focus Node are now dimmed. This helps see what part of the graph is active, taking into account the current context.
+- Image Viewer : Added Luminance option to the channel selection menu.
+- Animation :
+  - Added new "Cubic" and "Bezier" interpolation modes which will smoothly interpolate between key values. The shape of the interpolated curves can
+    be controlled by adjusting the slope and scale of key tangents, which are displayed and can be interactively manipulated in the Animation Editor.
+  - Added new user interface panel in the Animation Editor with controls for key value, time, interpolation mode and tangent slope, scale and tie mode.
+
+Improvements
+------------
+
+- HierarchyView : Moved processing to a background thread, so that displaying slow scenes does not cause the HierarchyView to lock up the UI.
+- GraphEditor :
+  - Improved drawing performance for large node graphs. Gains of about 40% are typical, with much greater gains when looking at a small region of a large graph or performing selection tests (for example when hovering over something or dragging a connection).
+  - Added support for middle-drag panning while dragging nodes and connections using <kbd>G</kbd>.
+  - Made connections slightly more visible when zoomed out.
+- Cancellation : Improved responsiveness of cancellation of tasks waiting on results from another thread.
+- ImageReader : Channels from EXR subimages named `rgb`, `rgba` or `depth` (either uppercase or lowercase) are now loaded into Gaffer's primary image layer.
+- PathFilter : Removed `scene:filter:inputScene` and `scene:path` variables from the context used to evaluate the `paths` plug. This improves performance in some scenarios, and prevents the creation of invalid filters where the paths themselves depend on the current scene location.
+- Switch : Removed variables such as `scene:path` and `image:channelName` from the context used to evaluate the `enabled` plug. This improves performance in some scenarios, and prevents the creation of invalid switches.
+- NodeEditor : Added option in node editor context menu to set interpolation of an animated value.
+- Animation : Added new `ConstantNext` interpolation mode, evaluates to the value of the next key for all times greater than the time of the key.
+- USD : Added support for loading constant primvars from non-geometric prims. These are represented in Gaffer as attributes with a `render:` prefix.
+- Arnold : Added support for `render:` prefixed attributes. For example, a Color3f attribute called `render:displayColor` will be readable as `displayColor` from a `user_data_rgb` shader.
+
+Fixes
+-----
+
+- PathListingWidget :
+  - Fixed subtle bugs in the underlying Qt model, although they haven't been observed to cause problems in practice.
+  - Fixed potential hangs when displaying Paths which launch threaded computes.
+- Animation :
+  - Fixed bug in `Key.setType()`. Previously it modified the value instead of the type.
+  - Fixed crash when dragging multiple keys around in editor.
+  - Fixed bug which resulted in preview key being incorrectly drawn at the origin.
+  - Fixed bug that cleared key selection when selecting multiple curves via path listing or gadget.
+  - Fixed bug when pressing <kbd>f</kbd> to frame viewport which resulted in a blank background in certain cases (#4410).
+  - Inserting a new key in editor (Hold "Ctrl" and left click on curve) is now undone/redone as a distinct step.
+  - Fixed bug when selecting curve for first time via gadget, keys appear, then disappear (#4443)
+  - Fixed bug where curves would not become visible in gadget until the path listing expansion was changed (#4408)
+- ParallelAlgo : Fixed deadlock in `callOnUIThread()`.
+- NameSwitch : Fixed context management bug that allowed variables such as `scene:path` to leak into the context used to evaluate the `selector` plug.
+- GafferTest.TestCase : Fixed `assertNodesConstructWithDefaultValues()` to recurse through all plugs.
+- NodeBinding : Fixed bug that could cause type queries to fail if types derived from Switch or ContextProcessor were wrapped for subclassing in Python.
+- Arnold : Fixed bug that prevented the type of a `user:` attribute from being changed during an interactive render.
+
+API
+---
+
+- ScriptNode : Added focus node API.
+- GraphComponent : Inlined `children()` method, yielding 20-40% improvements in various child iteration benchmarks.
+- Gadget :
+  - Added `layerMask()` and `renderBound()` virtual functions.
+  - Added `BackMidBack` render layer.
+- ViewportGadget :
+  - Added `gadgetsAt()` overload which returns the gadgets rather than taking an output parameter by reference.
+  - Added `gadgetsAt()` overload taking a raster space region (rather than position) and an optional layer filter.
+  - Add support for Gadget's double click signal.
+- PathListingWidget :
+  - `setSortable()` and `getSortable()` are no longer deprecated. The underlying bug that made them unreliable
+    has been fixed.
+  - Path processing has been moved to a background thread. The API remains unchanged, but updates to the displayed
+    data are made asynchronously with respect to calls to methods of the PathListingWidget.
+- GafferTest.TestCase : Added `assertFloat32Equal()` function, raises AssertionError if two values do not compare equal after conversion to single precision float.
+- GafferUITest.TestCase : Unexpected Qt messages are now reported as test failures.
+- Context : Modified `ChangedSignal` to use a `CatchingSignalCombiner`, which prevents exceptions from one slot preventing the execution of another.
+- Menu : callable passed as the "checkBox" parameter of a menu item can now return None.
+- Path :
+  - Added optional `canceller` argument to `isValid()`, `isLeaf()`, `propertyNames()`, `property()` and `children()` methods.
+  - Added `cancellationSubject()` virtual function that must be implemented by any paths which access the node graph.
+- ScenePath : Added support for cancellation of calls to `isValid()` and `children()`.
+- FileSystemPath : Added support for cancellation of calls to `children()` and `property()`.
+- PathFilter : Added support for cancellation of calls to `filter()`.
+- Animation :
+  - `curve.addKey()` and `key.setTime()` now return active clashing key
+  - `curve.addKey()` now has optional remove parameter that defaults to true, if false active clashing key is not removed and becomes inactive.
+  - `key.setTime()` will not remove active clashing key, instead it becomes become inactive. inactive key at old time becomes active.
+  - Added `curve.removeInactiveKeys()` function, removes all the inactive keys parented to a curve.
+  - Added `key.isActive()` function, returns true if key is parented to curve and is the active key at its current time.
+  - Added `curve.insertKey()` functions, insert key at specified time with optionally specified value.
+  - Added `curve.keyTimeChangedSignal()` function, returns a signal that is called when a key's time has changed
+  - Added `curve.keyValueChangedSignal()` function, returns a signal that is called when a key's value has changed
+  - Added `curve.keyInterpolationChangedSignal()` function, returns a signal that is called when a key's interpolation has changed
+  - Added new api for cubic interpolation modes, key tangents and tie mode (see header `Animation.h` for full details)
+- AnimationGadget :
+  - Added `selectedKeys()` function, returns current set of selected keys.
+  - Added `onTimeAxis()` function, returns true if specified line is over the time axis of the gadget.
+  - Added `onValueAxis()` function, returns true if specified line is over the value axis of the gadget.
+
+Breaking Changes
+----------------
+
+- ImageReader : Channels from EXR subimages named `rgb`, `rgba` or `depth` (either uppercase or lowercase) are now loaded into Gaffer's primary image layer.
+- FilteredChildIterator/FilteredRecursiveChildIterator : Removed all namespace-level typedefs, which were deprecated in Gaffer 0.59.0.0. Use the class-level typedefs instead, for example `Plug::Iterator` in place of `PlugIterator`.
+- Gadget :
+  - Moved `render()` and `renderRequestSignal()` to ViewportGadget.
+  - Removed `select()` method.
+  - Replaced `hasLayer()` virtual function with `layerMask()`.
+  - Added `renderBound()` virtual function.
+  - Renamed `doRenderLayer()` to `renderLayer()`, and added new `renderReason` argument, which can be used to check for selection renders without needing to query `Selector::currentSelector()`.
+- ViewportGadget : Deprecated old `gadgetsAt()` signature. Please use the new form instead.
+- ArnoldOptions : Removed support for the `ai:ignore_motion_blur` option. Turn off the `sampleMotion` option using a StandardOptions node instead.
+- DotNodeGadget and AuxiliaryNodeGadget now use more inherited functionality from StandardNodeGadget, which could cause problems if anyone has subclassed the gadgets
+- Fullscreen hotkey is now <kbd>F11</kbd> instead of <kbd>`</kbd>.
+- Removed support for linking editors (following the focus node replaces most practical uses of this feature).
+- Animation :
+  - Renamed `Type` enum to `Interpolation`.
+  - Interpolation of a key now affects span to next instead of previous key.
+  - Renamed Key's `set/getType()` accessors to `set/getInterpolation()`.
+  - Renamed `Step` interpolation mode to `Constant`.
+  - Removed customised Key equality operators, the default operators compare on object identity.
+- Path : Added `canceller` arguments to virtual methods. Note that Python subclasses can be made compatible with both Gaffer 0.60 and 0.61 simply by adding a `canceller = None` argument.
+- PathFilter : Added `canceller` argument to `doFilter()` method. Note that Python subclasses can be made compatible with both Gaffer 0.60 and 0.61 simply by adding a `canceller = None` argument.
+- CopyAttributes : Removed backwards compatibility for accessing input and source scenes as `in[0]` and `in[1]` respectively. Use `in` and `source` instead.
+
+Build
+-----
+
+- Updated to GafferHQ/dependencies 4.0.0 :
+  - OpenVDB : Updated to version 8.1.0.
+  - TBB : Updated to version 2020.2.
+  - Qt : Updated to version 5.15.2.
+  - PySide : Updated to version 5.15.2.
+  - Cortex : Updated to version 10.3.0.0.
+
+0.60.12.1 (relative to 0.60.12.0)
+=========
+
+Fixes
+-----
+
+- BranchCreator : Fixed bug in bounding box computation which could cause excessive evaluation of the input scene.
+
+0.60.12.0 (relative to 0.60.11.0)
+=========
+
+Improvements
+------------
+
+- Animation : Added basic support for loading animation saved from Gaffer 0.61. Caution : `Bezier` and `Cubic` interpolation will be converted to `Linear`, because they are features available in Gaffer 0.61 only.
+
+Fixes
+-----
+
+- SceneReader :
+  - Fixed loading of indexed UVs from Alembic curves.
+  - Fixed loading of custom attributes from USD files.
+- SceneWriter : Fixed writing of indexed primitive variables to Alembic caches.
+
+Build
+-----
+
+- Updated to GafferHQ/dependencies 3.2.0 :
+  - Cortex : Updated to version 10.2.3.0.
+
+0.60.11.0 (relative to 0.60.10.0)
+=========
+
+Improvements
+------------
+
+- ArnoldAttributes : Added control over Arnold's `polymesh.subdiv_frustum_ignore` parameter. This is accessible from the Subdivision section in the NodeEditor.
+
+0.60.10.0 (relative to 0.60.9.0)
+=========
+
+Improvements
+------------
+
+- Backdrop : Added a dedicated title bar for selection and moving Backdrops. This is smaller but more obvious than the previous region, reducing the likelihood of accidental movement.
+- NodeEditor : Added <kbd>Alt</kbd>+<kbd>E</kbd> and <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd> shortcuts for editing source and tweak nodes respectively. These are similar to the equivalent shortcuts in the Viewer and HierarchyView, but pin an existing NodeEditor instead of creating a new one.
+- Animation : Added compatibility for loading animation from Gaffer 0.61 where Step has been renamed to Constant.
+
+Fixes
+-----
+
+- PrimitiveInspector : Fixed update when all primitive variables with a particular interpolation are removed.
+
+0.60.9.0 (relative to 0.60.8.0)
+========
+
+Improvements
+------------
+
+- Viewer : Added settings to control aperture and clipping planes when looking through lights. This can be customised on a per-light basis using the new visualiser settings on the Light node.
+- Light : Added visualiser settings to control aperture and clipping planes when looking through the light in the Viewer. These settings override the defaults specified in the Viewer itself.
+- LightToCamera : Added `distantAperture` and `clippingPlanes` plugs.
+- Arnold Render : Changed warnings for invalid mesh lights to be one descriptive warning per light, instead of repeating an unclear warning for every surface that links to the light.
+
+Fixes
+-----
+
+- Viewer : Framing the scene while looking through a light no longer tries to frame the light itself.
+- SceneReader : Fixed bug attempting to read unsupported custom attribute types from USD files. This caused an obscure `Cannot compute hash from a CompoundObject will NULL data pointers!` error, but now prints a warning instead.
+- GafferTest.TestCase :
+  - Fixed `assertNodesAreDocumented()` to work for Nodes with multiple base classes.
+  - Fixed `assertTypeNamesArePrefixed()` to work for Nodes in Python submodules.
+
+API
+---
+
+- GafferTest.TestCase : Added `plugsToIgnore` argument to `assertNodesConstructWithDefaultValues()`.
+- OpenGLRenderer : The `gl:queryBound` command now supports an `omitted` parameter containing a PathMatcher with paths to skip when computing the bound.
+- SceneGadget : Added new `bound( selected, omitted = nullptr )` signature, which allows certain paths to be omitted from the bound computation, with or without limiting to selection. The previous `selectionBound()` method is now deprecated.
+
+0.60.8.0 (relative to 0.60.7.1)
+========
+
+Improvements
+------------
+
+- Catalogue : Added support for naming incoming images using a `catalogue:imageName` display driver parameter. The default `Interactive/Beauty` output now includes this parameter so that it can be specified via the Outputs node.
+
+Fixes
+-----
+
+- OSL Expression : Fixed crash due to exception in upstream computation.
+- OSLShader : Fixed loading of a further 85 MaterialX shaders which were renamed by https://github.com/AcademySoftwareFoundation/OpenShadingLanguage/pull/909.
+- StandardNodeGadget : Changes to `nodeGadget:minWidth` metadata now take immediate effect in all GraphEditors.
+
+0.60.7.1 (relative to 0.60.7.0)
+========
+
+Fixes
+-----
+
+- OSLShader : Fixed loading of `mx_invert_float` shaders. These were renamed to `mx_invert_float_float` in the OpenShadingLanguage project.
+- PythonEditor : Fixed bug where the input widget didn't scroll to show the new line when <kbd>Return</kbd> was pressed.
+- TypedObjectPlug : Fixed bug in the serialisation of some `IECore.CompoundObject` values (the necessary `import IECore` was sometimes missing). This was particularly likely to affect CustomAttributes nodes where the `extraAttributes` plug was used.
+
 0.60.7.0 (relative to 0.60.6.1)
 ========
 
@@ -368,6 +635,14 @@ Build
   - LLVM 10.0.1.
   - OpenVDB 7.2.2.
   - Cortex 10.2.0.0.
+
+0.59.9.5 (relative to 0.59.9.4)
+========
+
+Fixes
+-----
+
+- OSL Expression : Fixed crash due to exception in upstream computation.
 
 0.59.9.4 (relative to 0.59.9.3)
 ========

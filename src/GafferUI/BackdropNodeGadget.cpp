@@ -48,8 +48,6 @@
 #include "Gaffer/StringPlug.h"
 #include "Gaffer/UndoScope.h"
 
-#include "IECoreGL/Selector.h"
-
 #include "IECore/BoxOps.h"
 #include "IECore/NullObject.h"
 
@@ -89,6 +87,8 @@ void titleAndDescriptionFromPlugs( const StringPlug *titlePlug, const StringPlug
 }
 
 const float g_margin = 3.0f;
+const float g_titleBarHeight = 1.0f;
+const float g_titleBarMargin = 1.0f;
 IECore::InternedString g_boundPlugName( "__uiBound" );
 IECore::InternedString g_colorKey( "nodeGadget:color" );
 Box2f g_defaultBound( V2f( -10 ), V2f( 10 ) );
@@ -252,7 +252,7 @@ Imath::Box3f BackdropNodeGadget::bound() const
 	return Box3f( V3f( b.min.x, b.min.y, 0.0f ), V3f( b.max.x, b.max.y, 0.0f ) );
 }
 
-void BackdropNodeGadget::doRenderLayer( Layer layer, const Style *style ) const
+void BackdropNodeGadget::renderLayer( Layer layer, const Style *style, RenderReason reason ) const
 {
 	if( layer != GraphLayer::Backdrops )
 	{
@@ -279,7 +279,14 @@ void BackdropNodeGadget::doRenderLayer( Layer layer, const Style *style ) const
 	const Box3f titleCharacterBound = style->characterBound( Style::HeadingText );
 	const float titleBaseline = bound.max.y - g_margin - titleCharacterBound.max.y;
 
-	if( IECoreGL::Selector::currentSelector() )
+	const float titleBarHeight = g_titleBarHeight / scale;
+	const float titleBarMargin = g_titleBarMargin / scale;
+	const Box2f titleBar(
+		V2f( bound.min.x + titleBarMargin, bound.max.y - ( titleBarHeight + titleBarMargin ) ),
+		V2f( bound.max.x - titleBarMargin, bound.max.y - titleBarMargin )
+	);
+
+	if( isSelectionRender( reason ) )
 	{
 		// when selecting we render in a simplified form.
 		// we only draw a thin strip around the edge of the backdrop
@@ -295,7 +302,7 @@ void BackdropNodeGadget::doRenderLayer( Layer layer, const Style *style ) const
 		style->renderSolidRectangle( Box2f( V2f( bound.max.x - width, bound.min.y ), bound.max ) ); // right
 		style->renderSolidRectangle( Box2f( bound.min, V2f( bound.max.x, bound.min.y + width ) ) ); // bottom
 		style->renderSolidRectangle( Box2f( V2f( bound.min.x, bound.max.y - width ), bound.max ) ); // top
-		style->renderSolidRectangle( Box2f( V2f( bound.min.x, titleBaseline - g_margin ), bound.max ) ); // heading
+		style->renderSolidRectangle( titleBar ); // title bar for movement
 	}
 	else
 	{
@@ -315,14 +322,19 @@ void BackdropNodeGadget::doRenderLayer( Layer layer, const Style *style ) const
 			glPopMatrix();
 		}
 
-		if( m_hovered )
-		{
-			style->renderHorizontalRule(
-				V2f( bound.center().x, titleBaseline - g_margin / 2.0f ),
-				bound.size().x - g_margin * 2.0f,
-				Style::HighlightedState
-			);
-		}
+		/// \todo Add `Style::renderBackdropTitleBar()` method so that
+		/// we don't have to hardcode the drawing here.
+		glPushAttrib( GL_CURRENT_BIT );
+			if( m_hovered )
+			{
+				glColor4f( 0.466, 0.612, 0.741, 1.0f );
+			}
+			else
+			{
+				glColor4f( 1.0, 1.0, 1.0, 0.15f );
+			}
+			style->renderSolidRectangle( titleBar );
+		glPopAttrib();
 
 		Box2f textBound = bound;
 		textBound.min += V2f( g_margin );
@@ -334,6 +346,23 @@ void BackdropNodeGadget::doRenderLayer( Layer layer, const Style *style ) const
 	}
 
 	glPopMatrix();
+}
+
+unsigned BackdropNodeGadget::layerMask() const
+{
+	return (unsigned)GraphLayer::Backdrops;
+}
+
+Imath::Box3f BackdropNodeGadget::renderBound() const
+{
+	// This doesn't take into account the possibility that the title sticks out beyond the backdrop,
+	// meaning that you could see the part of the title sticking out of a Backdrop disappear when the Backdrop
+	// goes off-screen.
+	//
+	// To fix this, we could either take into account style()->textBound, scaling, and the title text here,
+	// or we could just limit the title to only rendering inside the Backdrop
+
+	return bound();
 }
 
 void BackdropNodeGadget::contextChanged()

@@ -61,9 +61,11 @@ class GAFFERUI_API DotNodeGadget : public StandardNodeGadget
 		DotNodeGadget( Gaffer::NodePtr node );
 		~DotNodeGadget() override;
 
+		Imath::Box3f bound() const override;
+
 	protected :
 
-		void doRenderLayer( Layer layer, const Style *style ) const override;
+		void renderLayer( Layer layer, const Style *style, RenderReason reason ) const override;
 
 	private :
 
@@ -89,11 +91,6 @@ class GAFFERUI_API DotNodeGadget : public StandardNodeGadget
 };
 
 IE_CORE_DECLAREPTR( DotNodeGadget )
-
-[[deprecated("Use `DotNodeGadget::Iterator` instead")]]
-typedef Gaffer::FilteredChildIterator<Gaffer::TypePredicate<DotNodeGadget> > DotNodeGadgetIterator;
-[[deprecated("Use `DotNodeGadget::RecursiveIterator` instead")]]
-typedef Gaffer::FilteredRecursiveChildIterator<Gaffer::TypePredicate<DotNodeGadget> > RecursiveDotNodeGadgetIterator;
 
 } // namespace GafferUI
 

@@ -39,10 +39,6 @@
 
 #include "GafferImageUI/ImageGadget.h"
 
-#include "GafferImage/Clamp.h"
-#include "GafferImage/Format.h"
-#include "GafferImage/DeepState.h"
-#include "GafferImage/Grade.h"
 #include "GafferImage/ImagePlug.h"
 #include "GafferImage/ImageSampler.h"
 #include "GafferImage/ImageStats.h"
@@ -115,7 +111,7 @@ class ImageView::ChannelChooser : public boost::signals::trackable
 					"soloChannel",
 					Plug::In,
 					/* defaultValue = */ -1,
-					/* minValue = */ -1,
+					/* minValue = */ -2,
 					/* maxValue = */ 3
 				)
 			);
@@ -170,13 +166,14 @@ class ImageView::ChannelChooser : public boost::signals::trackable
 				return false;
 			}
 
-			const char *rgba[4] = { "R", "G", "B", "A" };
-			for( int i = 0; i < 4; ++i )
+			const char *rgbal[5] = { "R", "G", "B", "A", "L" };
+			for( int i = 0; i < 5; ++i )
 			{
-				if( event.key == rgba[i] )
+				if( event.key == rgbal[i] )
 				{
+					int soloChannel = i < 4 ? i : -2;
 					soloChannelPlug()->setValue(
-						soloChannelPlug()->getValue() == i ? -1 : i
+						soloChannelPlug()->getValue() == soloChannel ? -1 : soloChannel
 					);
 					return true;
 				}
@@ -465,7 +462,7 @@ class Box2iGadget : public GafferUI::Gadget
 
 	protected :
 
-		void doRenderLayer( Layer layer, const Style *style ) const override
+		void renderLayer( Layer layer, const Style *style, RenderReason reason ) const override
 		{
 			if( layer != Layer::Main )
 			{
@@ -496,7 +493,7 @@ class Box2iGadget : public GafferUI::Gadget
 			V2f deleteButtonSize( threshold.x * 0.5, threshold.y * 0.5 );
 			glPushAttrib( GL_CURRENT_BIT | GL_LINE_BIT | GL_ENABLE_BIT );
 
-				if( IECoreGL::Selector::currentSelector() )
+				if( isSelectionRender( reason ) )
 				{
 					if( m_editable )
 					{
@@ -552,6 +549,21 @@ class Box2iGadget : public GafferUI::Gadget
 			glPopAttrib();
 
 			glPopMatrix();
+		}
+
+		unsigned layerMask() const override
+		{
+			return (unsigned)Layer::Main;
+		}
+
+		Imath::Box3f renderBound() const override
+		{
+			// We draw handles outside the box, so we need to extend outside box - since we
+			// don't usually have many Box2iGadgets at once, we return infinite rather than
+			// finessing the overrender
+			Box3f b;
+			b.makeInfinite();
+			return b;
 		}
 
 	private :
@@ -724,7 +736,7 @@ class Box2iGadget : public GafferUI::Gadget
 		// Returns the scale from screen raster pixels to Gaffer image pixels.  This includes both
 		// the scaling applied by ViewportGadget, and the pixelAspect scaling which isn't applied
 		// automatically ( it is optionally returned separately so we can apply it manually in
-		// doRenderLayer )
+		// renderLayer )
 		V2f screenToImageScale( float *pixelAspectOut = nullptr ) const
 		{
 			const ViewportGadget *viewportGadget = ancestor<ViewportGadget>();
@@ -866,7 +878,7 @@ class V2iGadget : public GafferUI::Gadget
 
 	protected :
 
-		void doRenderLayer( Layer layer, const Style *style ) const override
+		void renderLayer( Layer layer, const Style *style, RenderReason reason ) const override
 		{
 			if( layer != Layer::Main )
 			{
@@ -886,7 +898,7 @@ class V2iGadget : public GafferUI::Gadget
 			V2f deleteButtonSize( threshold.x * 0.5, threshold.y * 0.5 );
 			glPushAttrib( GL_CURRENT_BIT | GL_LINE_BIT | GL_ENABLE_BIT );
 
-				if( IECoreGL::Selector::currentSelector() )
+				if( isSelectionRender( reason ) )
 				{
 					if( m_editable )
 					{
@@ -931,6 +943,21 @@ class V2iGadget : public GafferUI::Gadget
 			glPopAttrib();
 
 			glPopMatrix();
+		}
+
+		unsigned layerMask() const override
+		{
+			return (unsigned)Layer::Main;
+		}
+
+		Imath::Box3f renderBound() const override
+		{
+			// We draw handles outside the box, so we need to extend outside box - since we
+			// don't usually have many Box2iGadgets at once, we return infinite rather than
+			// finessing the overrender
+			Box3f b;
+			b.makeInfinite();
+			return b;
 		}
 
 	private :
@@ -1057,7 +1084,7 @@ class V2iGadget : public GafferUI::Gadget
 		// Returns the scale from screen raster pixels to Gaffer image pixels.  This includes both
 		// the scaling applied by ViewportGadget, and the pixelAspect scaling which isn't applied
 		// automatically ( it is optionally returned separately so we can apply it manually in
-		// doRenderLayer )
+		// renderLayer )
 		V2f screenToImageScale( float *pixelAspectOut = nullptr ) const
 		{
 			const ViewportGadget *viewportGadget = ancestor<ViewportGadget>();

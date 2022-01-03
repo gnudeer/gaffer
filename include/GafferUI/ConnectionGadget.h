@@ -121,6 +121,12 @@ class GAFFERUI_API ConnectionGadget : public ConnectionCreator
 			static ConnectionGadgetPtr creator( NodulePtr srcNodule, NodulePtr dstNodule ) { return new T( srcNodule, dstNodule ); };
 		};
 
+		virtual void activeForFocusNode( bool active );
+
+		friend class GraphGadget;
+
+		bool m_active;
+
 	private :
 
 		NodulePtr m_srcNodule;
@@ -138,11 +144,6 @@ class GAFFERUI_API ConnectionGadget : public ConnectionCreator
 
 
 };
-
-[[deprecated("Use `ConnectionGadget::Iterator` instead")]]
-typedef Gaffer::FilteredChildIterator<Gaffer::TypePredicate<ConnectionGadget> > ConnectionGadgetIterator;
-[[deprecated("Use `ConnectionGadget::RecursiveIterator` instead")]]
-typedef Gaffer::FilteredRecursiveChildIterator<Gaffer::TypePredicate<ConnectionGadget> > RecursiveConnectionGadgetIterator;
 
 } // namespace GafferUI
 

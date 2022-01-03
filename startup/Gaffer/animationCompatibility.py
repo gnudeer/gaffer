@@ -36,8 +36,8 @@
 
 import Gaffer
 
-# Patch to allow loading of gaffer scenes and ensure forward compatibility of code
-# written with Animation.Type renamed to Animation.Interpolation (0.61 onwards)
-Gaffer.Animation.Interpolation = Gaffer.Animation.Type
-Gaffer.Animation.Key.setInterpolation = Gaffer.Animation.Key.setType
-Gaffer.Animation.Key.getInterpolation = Gaffer.Animation.Key.getType
+# Animation.Type has been renamed to Animation.Interpolation
+Gaffer.Animation.Type = Gaffer.Animation.Interpolation
+
+# Animation.Interpolation.Step has been renamed to Animation.Interpolation.Constant
+Gaffer.Animation.Interpolation.Step = Gaffer.Animation.Interpolation.Constant

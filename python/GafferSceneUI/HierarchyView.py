@@ -57,7 +57,7 @@ class HierarchyView( GafferUI.NodeSetEditor ) :
 
 		column = GafferUI.ListContainer( GafferUI.ListContainer.Orientation.Vertical, borderWidth = 4, spacing = 4 )
 
-		GafferUI.NodeSetEditor.__init__( self, column, scriptNode, **kw )
+		GafferUI.NodeSetEditor.__init__( self, column, scriptNode, nodeSet = scriptNode.focusSet(), **kw )
 
 		searchFilter = _GafferSceneUI._HierarchyViewSearchFilter()
 		setFilter = _GafferSceneUI._HierarchyViewSetFilter()
@@ -81,27 +81,6 @@ class HierarchyView( GafferUI.NodeSetEditor ) :
 			self.__pathListing.setDragPointer( "objects" )
 			self.__pathListing.setSortable( False )
 
-			# Work around insanely slow selection of a range containing many
-			# objects (using a shift-click). The default selection behaviour
-			# is SelectRows and this triggers some terrible performance problems
-			# in Qt. Since we only have a single column, there is no difference
-			# between SelectItems and SelectRows other than the speed.
-			#
-			# This workaround isn't going to be sufficient when we come to add
-			# additional columns to the HierarchyView. What _might_ work instead
-			# is to override `QTreeView.setSelection()` in PathListingWidget.py,
-			# so that we manually expand the selected region to include full rows,
-			# and then don't have to pass the `QItemSelectionModel::Rows` flag to
-			# the subsequent `QItemSelectionModel::select()` call. This would be
-			# essentially the same method we used to speed up
-			# `PathListingWidget.setSelection()`.
-			#
-			# Alternatively we could avoid QItemSelectionModel entirely by managing
-			# the selection ourself as a persistent PathMatcher.
-			self.__pathListing._qtWidget().setSelectionBehavior(
-				self.__pathListing._qtWidget().SelectionBehavior.SelectItems
-			)
-
 			self.__selectionChangedConnection = self.__pathListing.selectionChangedSignal().connect( Gaffer.WeakMethod( self.__selectionChanged ) )
 			self.__expansionChangedConnection = self.__pathListing.expansionChangedSignal().connect( Gaffer.WeakMethod( self.__expansionChanged ) )
 
@@ -110,6 +89,8 @@ class HierarchyView( GafferUI.NodeSetEditor ) :
 
 		self.__plug = None
 		self._updateFromSet()
+		self.__transferExpansionFromContext()
+		self.__transferSelectionFromContext()
 
 	def scene( self ) :
 
@@ -182,8 +163,6 @@ class HierarchyView( GafferUI.NodeSetEditor ) :
 				f.setContext( contextCopy )
 			with Gaffer.BlockedConnection( self.__selectionChangedConnection ) :
 				self.__pathListing.setPath( GafferScene.ScenePath( self.__plug, contextCopy, "/", filter = self.__filter ) )
-			self.__transferExpansionFromContext()
-			self.__transferSelectionFromContext()
 		else :
 			with Gaffer.BlockedConnection( self.__selectionChangedConnection ) :
 				self.__pathListing.setPath( Gaffer.DictPath( {}, "/" ) )

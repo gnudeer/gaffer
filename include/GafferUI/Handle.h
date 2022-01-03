@@ -69,8 +69,9 @@ class GAFFERUI_API Handle : public Gadget
 
 		// Implemented to call renderHandle() after applying
 		// the raster scale.
-		void doRenderLayer( Layer layer, const Style *style ) const override;
-		bool hasLayer( Layer layer ) const override;
+		void renderLayer( Layer layer, const Style *style, RenderReason reason ) const override;
+		unsigned layerMask() const override;
+		Imath::Box3f renderBound() const override;
 
 		// Must be implemented by derived classes to draw their
 		// handle.
@@ -217,11 +218,6 @@ class GAFFERUI_API Handle : public Gadget
 };
 
 IE_CORE_DECLAREPTR( Handle )
-
-[[deprecated("Use `Handle::Iterator` instead")]]
-typedef Gaffer::FilteredChildIterator<Gaffer::TypePredicate<Handle> > HandleIterator;
-[[deprecated("Use `Handle::Recursive` instead")]]
-typedef Gaffer::FilteredRecursiveChildIterator<Gaffer::TypePredicate<Handle> > RecursiveHandleIterator;
 
 } // namespace GafferUI
 

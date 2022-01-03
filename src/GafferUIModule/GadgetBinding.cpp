@@ -56,7 +56,7 @@ using namespace GafferUI;
 namespace
 {
 
-struct RenderRequestSlotCaller
+struct VisibilityChangedSlotCaller
 {
 	boost::signals::detail::unusable operator()( boost::python::object slot, GadgetPtr g )
 	{
@@ -168,12 +168,6 @@ void setEnabled( Gadget &g, bool enabled )
 	g.setEnabled( enabled );
 }
 
-void render( const Gadget &g )
-{
-	IECorePython::ScopedGILRelease gilRelease;
-	g.render();
-}
-
 BOOST_PYTHON_MEMBER_FUNCTION_OVERLOADS( fullTransformOverloads, fullTransform, 0, 1 );
 
 } // namespace
@@ -201,8 +195,6 @@ void GafferUIModule::bindGadget()
 		.def( "fullTransform", &Gadget::fullTransform, fullTransformOverloads() )
 		.def( "transformedBound", (Imath::Box3f (Gadget::*)() const)&Gadget::transformedBound )
 		.def( "transformedBound", (Imath::Box3f (Gadget::*)( const Gadget * ) const)&Gadget::transformedBound )
-		.def( "render", &render )
-		.def( "renderRequestSignal", &Gadget::renderRequestSignal, return_internal_reference<1>() )
 		.def( "setToolTip", &Gadget::setToolTip )
 		.def( "buttonPressSignal", &Gadget::buttonPressSignal, return_internal_reference<1>() )
 		.def( "buttonReleaseSignal", &Gadget::buttonReleaseSignal, return_internal_reference<1>() )
@@ -224,12 +216,11 @@ void GafferUIModule::bindGadget()
 		.def( "_idleSignalAccessedSignal", &Gadget::idleSignalAccessedSignal, return_value_policy<reference_existing_object>() )
 		.staticmethod( "_idleSignalAccessedSignal" )
 		.def( "_dirty", &Gadget::dirty )
-		.def( "_requestRender", &Gadget::requestRender )
-		.def( "select", &Gadget::select ).staticmethod( "select" )
 	;
 
 	enum_<Gadget::Layer>( "Layer" )
 		.value( "Back", Gadget::Layer::Back )
+		.value( "BackMidBack", Gadget::Layer::BackMidBack )
 		.value( "MidBack", Gadget::Layer::MidBack )
 		.value( "Main", Gadget::Layer::Main )
 		.value( "MidFront", Gadget::Layer::MidFront )
@@ -242,7 +233,13 @@ void GafferUIModule::bindGadget()
 		.value( "Layout", Gadget::DirtyType::Layout )
 	;
 
-	SignalClass<Gadget::RenderRequestSignal, DefaultSignalCaller<Gadget::RenderRequestSignal>, RenderRequestSlotCaller>( "RenderRequestSignal" );
+	enum_<Gadget::RenderReason>( "RenderReason" )
+		.value( "Draw", Gadget::RenderReason::Draw )
+		.value( "Select", Gadget::RenderReason::Select )
+		.value( "DragSelect", Gadget::RenderReason::DragSelect )
+	;
+
+	SignalClass<Gadget::VisibilityChangedSignal, DefaultSignalCaller<Gadget::VisibilityChangedSignal>, VisibilityChangedSlotCaller>( "VisibilityChangedSignal" );
 	SignalClass<Gadget::ButtonSignal, DefaultSignalCaller<Gadget::ButtonSignal>, ButtonSlotCaller>( "ButtonSignal" );
 	SignalClass<Gadget::KeySignal, DefaultSignalCaller<Gadget::KeySignal>, KeySlotCaller>( "KeySignal" );
 	SignalClass<Gadget::DragBeginSignal, DefaultSignalCaller<Gadget::DragBeginSignal>, DragBeginSlotCaller>( "DragBeginSignal" );

@@ -203,7 +203,7 @@ class TestCase( unittest.TestCase ) :
 			if issubclass( cls, IECore.RunTimeTyped ) :
 				if cls.staticTypeName() in namesToIgnore :
 					continue
-				if cls.staticTypeName() != module.__name__ + "::" + cls.__name__ :
+				if cls.staticTypeName() != module.__name__.replace( ".", "::" ) + "::" + cls.__name__ :
 					incorrectTypeNames.append( cls.staticTypeName() )
 
 		self.assertEqual( incorrectTypeNames, [] )
@@ -226,7 +226,7 @@ class TestCase( unittest.TestCase ) :
 
 			self.assertEqual( instance.getName(), cls.staticTypeName().rpartition( ":" )[2] )
 
-	def assertNodesAreDocumented( self, module, additionalTerminalPlugTypes = () ) :
+	def assertNodesAreDocumented( self, module, additionalTerminalPlugTypes = (), nodesToIgnore = None ) :
 
 		terminalPlugTypes = (
 			Gaffer.ArrayPlug,
@@ -249,6 +249,9 @@ class TestCase( unittest.TestCase ) :
 			if not inspect.isclass( cls ) or not issubclass( cls, Gaffer.Node ) :
 				continue
 
+			if nodesToIgnore is not None and cls in nodesToIgnore :
+				continue
+
 			if not cls.__module__.startswith( module.__name__ + "." ) :
 				# Skip nodes which look like they've been injected from
 				# another module by one of the compatibility config files.
@@ -267,7 +270,7 @@ class TestCase( unittest.TestCase ) :
 			else :
 				baseNode = None
 				try :
-					baseNode = cls.__bases__[0]()
+					baseNode = [x for x in cls.__bases__ if issubclass( x, Gaffer.Node )][0]()
 				except :
 					pass
 				if baseNode is not None :
@@ -288,15 +291,22 @@ class TestCase( unittest.TestCase ) :
 
 			checkPlugs( node )
 
-		self.assertEqual( undocumentedNodes, [] )
 		self.assertEqual( undocumentedPlugs, [] )
+		self.assertEqual( undocumentedNodes, [] )
 
 	## We don't serialise plug values when they're at their default, so
 	# newly constructed nodes _must_ have all their plugs be at the default value.
 	# Use `nodesToIgnore` with caution : the only good reason for using it is to
 	# ignore compatibility stubs used to load old nodes and convert them into new
-	# ones.
-	def assertNodesConstructWithDefaultValues( self, module, nodesToIgnore = None ) :
+	# ones. If you have an issue that requires ignoring, consider localizing the
+	# problem by using `plugsToIgnore` instead.
+	# Use `plugsToIgnore` with caution : the only good reason for using it is to
+	# allow existing issues to be ignored while still strictly testing the rest of
+	# a particular node. The expected format is a dict mapping node-class to python
+	# plug-identifiers (eg `{ Gaffer.ScriptNode : ( "frameRange.start", ) }` )
+	def assertNodesConstructWithDefaultValues( self, module, nodesToIgnore = None, plugsToIgnore = None ) :
+
+		nonDefaultPlugs = []
 
 		for name in dir( module ) :
 
@@ -312,7 +322,10 @@ class TestCase( unittest.TestCase ) :
 			except :
 				continue
 
-			for plug in node.children( Gaffer.Plug ) :
+			for plug in Gaffer.Plug.RecursiveRange( node ) :
+
+				if plugsToIgnore is not None and cls in plugsToIgnore and plug.relativeName( node ) in plugsToIgnore[cls] :
+					continue
 
 				if plug.source().direction() != plug.Direction.In or not isinstance( plug, Gaffer.ValuePlug ) :
 					continue
@@ -320,7 +333,10 @@ class TestCase( unittest.TestCase ) :
 				if not plug.getFlags( plug.Flags.Serialisable ) :
 					continue
 
-				self.assertTrue( plug.isSetToDefault(), plug.fullName() + " not at default value following construction" )
+				if not plug.isSetToDefault() :
+					nonDefaultPlugs.append( plug.fullName() + " not at default value following construction" )
+
+		self.assertEqual( nonDefaultPlugs, [] )
 
 	def assertModuleDoesNotImportUI( self, moduleName ) :
 
@@ -331,3 +347,8 @@ class TestCase( unittest.TestCase ) :
 			f.write( "assert( 'GafferUI' not in sys.modules )\n" )
 
 		subprocess.check_call( [ "gaffer", "python", script ] )
+
+	def assertFloat32Equal( self, value0, value1 ) :
+
+		from GafferTest import asFloat32
+		self.assertEqual( asFloat32( value0 ), asFloat32( value1 ) )

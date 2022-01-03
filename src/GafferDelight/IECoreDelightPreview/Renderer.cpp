@@ -105,7 +105,7 @@ T parameter( const IECore::CompoundDataMap &parameters, const IECore::InternedSt
 	}
 }
 
-std::string shaderCacheGetter( const std::string &shaderName, size_t &cost )
+std::string shaderCacheGetter( const std::string &shaderName, size_t &cost, const IECore::Canceller *canceller )
 {
 	cost = 1;
 	const char *oslShaderPaths = getenv( "OSL_SHADER_PATHS" );
@@ -628,6 +628,10 @@ class DelightAttributes : public IECoreScenePreview::Renderer::AttributesInterfa
 					{
 						params.add( m.first.c_str() + 3, d );
 					}
+				}
+				else if( boost::starts_with( m.first.string(), "render:" ) )
+				{
+					msg( Msg::Warning, "DelightRenderer", boost::format( "Render attribute \"%s\" not supported" ) % m.first.string() );
 				}
 				else if( boost::starts_with( m.first.string(), "user:" ) )
 				{

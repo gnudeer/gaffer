@@ -103,6 +103,17 @@ V2f planarScaleFromCameraAndRes( const IECoreScene::Camera *cam, const V2i &res 
 	return V2f( cam->getAperture()[0] / ((float)res[0] ), cam->getAperture()[1] / ((float)res[1] ) );
 }
 
+M44f g_identityMatrix;
+
+const Box3f initInfiniteBox()
+{
+	Box3f r;
+	r.makeInfinite();
+	return r;
+}
+
+Box3f g_infiniteBox( initInfiniteBox() );
+
 } // namespace
 
 //////////////////////////////////////////////////////////////////////////
@@ -644,7 +655,9 @@ ViewportGadget::ViewportGadget( GadgetPtr primaryChild )
 		m_preciseMotionAllowed( true ),
 		m_preciseMotionEnabled( false ),
 		m_dragTracking( DragTracking::NoDragTracking ),
-		m_variableAspectZoom( false )
+		m_variableAspectZoom( false ),
+		m_dragButton( ButtonEvent::None ),
+		m_cameraMotionDuringDrag( false )
 {
 
 	// Viewport visibility is managed by GadgetWidgets,
@@ -689,11 +702,10 @@ std::string ViewportGadget::getToolTip( const IECore::LineSegment3f &line ) cons
 		return result;
 	}
 
-	std::vector<GadgetPtr> gadgets;
-	gadgetsAt( V2f( line.p0.x, line.p0.y ), gadgets );
-	for( std::vector<GadgetPtr>::const_iterator it = gadgets.begin(), eIt = gadgets.end(); it != eIt; it++ )
+	std::vector<Gadget*> gadgets = gadgetsAtInternal( V2f( line.p0.x, line.p0.y ), false );
+	for( Gadget *it : gadgets )
 	{
-		Gadget *gadget = it->get();
+		Gadget *gadget = it;
 		while( gadget && gadget != this )
 		{
 			IECore::LineSegment3f lineInGadgetSpace = rasterToGadgetSpace( V2f( line.p0.x, line.p0.y), gadget );
@@ -921,21 +933,35 @@ bool ViewportGadget::getVariableAspectZoom() const
 	return m_variableAspectZoom;
 }
 
-void ViewportGadget::gadgetsAt( const Imath::V2f &rasterPosition, std::vector<GadgetPtr> &gadgets ) const
+std::vector< Gadget* > ViewportGadget::gadgetsAt( const Imath::V2f &rasterPosition ) const
+{
+	return gadgetsAtInternal( Box2f( rasterPosition - V2f( 1 ), rasterPosition + V2f( 1 ) ), Layer::None, false );
+}
+
+std::vector< Gadget* > ViewportGadget::gadgetsAt( const Imath::Box2f &rasterRegion, Gadget::Layer filterLayer ) const
+{
+	return gadgetsAtInternal( rasterRegion, filterLayer, false );
+}
+std::vector< Gadget* > ViewportGadget::gadgetsAtInternal( const Imath::V2f &rasterPosition, bool dragging ) const
+{
+	return gadgetsAtInternal( Box2f( rasterPosition - V2f( 1 ), rasterPosition + V2f( 1 ) ), Layer::None, dragging );
+}
+
+std::vector< Gadget* > ViewportGadget::gadgetsAtInternal( const Imath::Box2f &rasterRegion, Gadget::Layer filterLayer, bool dragging ) const
 {
 	std::vector<HitRecord> selection;
 	{
-		SelectionScope selectionScope( this, rasterPosition, selection, IECoreGL::Selector::IDRender );
-		Gadget::render();
+		SelectionScope selectionScope( this, rasterRegion, selection, IECoreGL::Selector::IDRender );
+		renderInternal( dragging ? RenderReason::DragSelect : RenderReason::Select, filterLayer );
 	}
 
-	for( std::vector<HitRecord>::const_iterator it = selection.begin(); it!= selection.end(); it++ )
+	std::vector< Gadget* > gadgets;
+	for( const HitRecord &it : selection )
 	{
-		GadgetPtr gadget = Gadget::select( it->name );
-		if( gadget )
-		{
-			gadgets.push_back( gadget );
-		}
+		// We can assume that renderInternal has populated m_renderItem, so we can just index into it
+		// using the index passed to loadName ( reversing the increment-by-one used to avoid the reserved
+		// name "0" )
+		gadgets.push_back( const_cast<Gadget*>( m_renderItems[ it.name - 1 ].gadget ) );
 	}
 
 	if( !gadgets.size() )
@@ -944,6 +970,17 @@ void ViewportGadget::gadgetsAt( const Imath::V2f &rasterPosition, std::vector<Ga
 		{
 			gadgets.push_back( const_cast<Gadget *>( g ) );
 		}
+	}
+	return gadgets;
+}
+
+// DEPRECATED
+void ViewportGadget::gadgetsAt( const Imath::V2f &rasterPosition, std::vector<GadgetPtr> &gadgets ) const
+{
+	std::vector< Gadget* > retGadgets = gadgetsAt( rasterPosition );
+	for( Gadget *g : retGadgets )
+	{
+		gadgets.push_back( g );
 	}
 }
 
@@ -1007,12 +1044,127 @@ void ViewportGadget::render() const
 	glMultMatrixf( camera->getTransform().getValue() );
 	glMatrixMode( GL_MODELVIEW );
 
-	Gadget::render();
+	renderInternal( RenderReason::Draw );
+}
+
+void ViewportGadget::childDirtied( DirtyType dirtyType )
+{
+	if( dirtyType == DirtyType::Layout || dirtyType == DirtyType::RenderBound )
+	{
+		// We need to rebuild the render items list
+		m_renderItems.clear();
+	}
+
+	renderRequestSignal()( this );
+}
+
+void ViewportGadget::renderInternal( RenderReason reason, Gadget::Layer filterLayer ) const
+{
+
+	bound(); // Updates layout if necessary
+
+	if( !m_renderItems.size() )
+	{
+		getRenderItems( this, M44f(), style(), m_renderItems );
+	}
+
+	M44f viewTransform;
+	glGetFloatv( GL_MODELVIEW_MATRIX, viewTransform.getValue() );
+	M44f projectionTransform;
+	glGetFloatv( GL_PROJECTION_MATRIX, projectionTransform.getValue() );
+
+	M44f combinedInverse = projectionTransform.inverse() * viewTransform.inverse();
+	Box3f bound = transform( Box3f( V3f( -1 ), V3f( 1 ) ), combinedInverse );
+	IECoreGL::Selector *selector = IECoreGL::Selector::currentSelector();
+
+	const Style *currentStyle = nullptr;
+
+	for( int layerIndex = (int)Layer::Back; layerIndex <= (int)Layer::Front; layerIndex <<= 1 )
+	{
+		Layer layer = Layer(layerIndex);
+		if( filterLayer != Layer::None && layer != filterLayer )
+		{
+			continue;
+		}
+
+		for( unsigned int i = 0; i < m_renderItems.size(); i++ )
+		{
+			const RenderItem &renderItem = m_renderItems[i];
+			if( !( renderItem.layerMask & layerIndex ) )
+			{
+				continue;
+			}
+
+			if( !renderItem.bound.intersects( bound ) )
+			{
+				continue;
+			}
+
+			glLoadMatrixf( viewTransform.getValue() );
+			glMultMatrixf( renderItem.transform.getValue() );
+			if( selector )
+			{
+				// 0 is a reserved name for when nothing is selected, so start at 1
+				selector->loadName( i + 1 );
+			}
+
+			if( renderItem.style != currentStyle )
+			{
+				renderItem.style->bind( currentStyle );
+				currentStyle = renderItem.style;
+			}
+
+			renderItem.gadget->renderLayer( layer, currentStyle, reason );
+		}
+	}
+	glLoadMatrixf( viewTransform.getValue() );
+}
+
+void ViewportGadget::getRenderItems( const Gadget *gadget, M44f transform, const Style *style, std::vector<RenderItem> &renderItems )
+{
+	const Box3f bound = gadget->renderBound();
+	bool boundSpecial = bound.isEmpty() || bound == g_infiniteBox;
+
+	if( gadget->getStyle() )
+	{
+		style = gadget->getStyle();
+	}
+
+	if( gadget->m_transform != g_identityMatrix )
+	{
+		transform = gadget->m_transform * transform;
+	}
+
+	unsigned layerMask = gadget->layerMask();
+	if( layerMask )
+	{
+		renderItems.push_back( {
+			gadget, style, transform,
+			boundSpecial ? bound : Imath::transform( bound, transform ),
+			layerMask
+		} );
+	}
+
+	for( const auto &i : gadget->children() )
+	{
+		// Cast is safe because of the guarantees acceptsChild() gives us
+		const Gadget *c = static_cast<const Gadget *>( i.get() );
+		if( !c->getVisible() )
+		{
+			continue;
+		}
+		getRenderItems( c, transform, style, renderItems );
+	}
 }
 
 ViewportGadget::UnarySignal &ViewportGadget::preRenderSignal()
 {
 	return m_preRenderSignal;
+}
+
+ViewportGadget::RenderRequestSignal &ViewportGadget::renderRequestSignal()
+{
+	return m_renderRequestSignal;
 }
 
 void ViewportGadget::childRemoved( GraphComponent *parent, GraphComponent *child )
@@ -1024,6 +1176,11 @@ void ViewportGadget::childRemoved( GraphComponent *parent, GraphComponent *child
 		m_lastButtonPressGadget = nullptr;
 	}
 
+	if( childGadget == m_previousClickGadget || childGadget->isAncestorOf( m_previousClickGadget.get() ) )
+	{
+		m_previousClickGadget = nullptr;
+	}
+
 	if( childGadget == m_gadgetUnderMouse || childGadget->isAncestorOf( m_gadgetUnderMouse.get() ) )
 	{
 		m_gadgetUnderMouse = nullptr;
@@ -1032,6 +1189,18 @@ void ViewportGadget::childRemoved( GraphComponent *parent, GraphComponent *child
 
 bool ViewportGadget::buttonPress( GadgetPtr gadget, const ButtonEvent &event )
 {
+	if( m_dragButton != ButtonEvent::None && m_dragButton != ButtonEvent::Middle && event.buttons == ( m_dragButton | ButtonEvent::Middle ) )
+	{
+		m_cameraMotionDuringDrag = true;
+
+		if( getCameraEditable() )
+		{
+			updateMotionState( event, true );
+			m_cameraController->motionStart( CameraController::Track, motionPositionFromEvent( event ) );
+		}
+		return true;
+	}
+
 	// A child's interaction with an unmodifier MMB drag takes precedence over camera moves
 	bool unmodifiedMiddleDrag = event.buttons == ButtonEvent::Middle && event.modifiers == ModifiableEvent::None;
 
@@ -1041,15 +1210,16 @@ bool ViewportGadget::buttonPress( GadgetPtr gadget, const ButtonEvent &event )
 		return true;
 	}
 
-	std::vector<GadgetPtr> gadgets;
-	gadgetsAt( V2f( event.line.p0.x, event.line.p0.y ), gadgets );
+	std::vector<Gadget*> gadgets = gadgetsAtInternal( V2f( event.line.p0.x, event.line.p0.y ), false );
 
-	GadgetPtr handler;
+	Gadget* handler;
 	m_lastButtonPressGadget = nullptr;
+	m_previousClickGadget = nullptr;
 	bool result = dispatchEvent( gadgets, &Gadget::buttonPressSignal, event, handler );
 	if( result )
 	{
 		m_lastButtonPressGadget = handler;
+		m_previousClickGadget = handler;
 		return true;
 	}
 
@@ -1064,10 +1234,25 @@ bool ViewportGadget::buttonPress( GadgetPtr gadget, const ButtonEvent &event )
 
 bool ViewportGadget::buttonRelease( GadgetPtr gadget, const ButtonEvent &event )
 {
+	if( m_cameraMotionDuringDrag && !( event.buttons & ButtonEvent::Middle ) )
+	{
+		m_cameraMotionDuringDrag = false;
+
+		if( getCameraEditable() )
+		{
+			updateMotionState( event );
+			m_cameraController->motionEnd( motionPositionFromEvent( event ), m_variableAspectZoom && ( event.modifiers & ModifiableEvent::Control ) != 0 );
+			m_cameraChangedSignal( this );
+			m_preciseMotionEnabled = false;
+			dirty( DirtyType::Render );
+		}
+		return true;
+	}
+
 	bool result = false;
 	if( m_lastButtonPressGadget )
 	{
-		result = dispatchEvent( m_lastButtonPressGadget, &Gadget::buttonReleaseSignal, event );
+		result = dispatchEvent( m_lastButtonPressGadget.get(), &Gadget::buttonReleaseSignal, event );
 	}
 
 	m_lastButtonPressGadget = nullptr;
@@ -1076,17 +1261,19 @@ bool ViewportGadget::buttonRelease( GadgetPtr gadget, const ButtonEvent &event )
 
 bool ViewportGadget::buttonDoubleClick( GadgetPtr gadget, const ButtonEvent &event )
 {
-	/// \todo Implement me. I'm not sure who this event should go to - probably
-	/// the last button press gadget, but we erased that in buttonRelease.
+	if( m_previousClickGadget )
+	{
+		return dispatchEvent( m_previousClickGadget.get(), &Gadget::buttonDoubleClickSignal, event );
+	}
+
 	return false;
 }
 
 void ViewportGadget::updateGadgetUnderMouse( const ButtonEvent &event )
 {
-	std::vector<GadgetPtr> gadgets;
-	gadgetsAt( V2f( event.line.p0.x, event.line.p0.y ), gadgets );
+	std::vector<Gadget*> gadgets = gadgetsAtInternal( V2f( event.line.p0.x, event.line.p0.y ), false );
 
-	GadgetPtr newGadgetUnderMouse;
+	Gadget* newGadgetUnderMouse = nullptr;
 	if( gadgets.size() )
 	{
 		newGadgetUnderMouse = gadgets[0];
@@ -1144,9 +1331,9 @@ void ViewportGadget::emitEnterLeaveEvents( GadgetPtr newGadgetUnderMouse, Gadget
 			enterTargets.push_back( enterTarget );
 			enterTarget = enterTarget->parent<Gadget>();
 		}
-		for( std::vector<GadgetPtr>::const_reverse_iterator it = enterTargets.rbegin(); it!=enterTargets.rend(); it++ )
+		for( GadgetPtr &it : enterTargets )
 		{
-			dispatchEvent( *it, &Gadget::enterSignal, event );
+			dispatchEvent( it.get(), &Gadget::enterSignal, event );
 		}
 	}
 
@@ -1174,8 +1361,8 @@ bool ViewportGadget::mouseMove( GadgetPtr gadget, const ButtonEvent &event )
 	// pass the signal through
 	if( m_gadgetUnderMouse )
 	{
-		std::vector<GadgetPtr> gadgetUnderMouse( 1, m_gadgetUnderMouse );
-		GadgetPtr handler;
+		std::vector<Gadget*> gadgetUnderMouse( 1, m_gadgetUnderMouse.get() );
+		Gadget* handler;
 		return dispatchEvent( gadgetUnderMouse, &Gadget::mouseMoveSignal, event, handler );
 	}
 
@@ -1184,6 +1371,7 @@ bool ViewportGadget::mouseMove( GadgetPtr gadget, const ButtonEvent &event )
 
 IECore::RunTimeTypedPtr ViewportGadget::dragBegin( GadgetPtr gadget, const DragDropEvent &event )
 {
+	m_dragButton = event.buttons;
 	m_dragTrackingThreshold = limits<float>::max();
 
 	CameraController::MotionType cameraMotionType = m_cameraController->cameraMotionType( event, m_variableAspectZoom, m_preciseMotionAllowed );
@@ -1192,7 +1380,7 @@ IECore::RunTimeTypedPtr ViewportGadget::dragBegin( GadgetPtr gadget, const DragD
 	if( ( !cameraMotionType || unmodifiedMiddleDrag ) && m_lastButtonPressGadget )
 	{
 		// see if a child gadget would like to start a drag because the camera doesn't handle the event
-		RunTimeTypedPtr data = dispatchEvent( m_lastButtonPressGadget, &Gadget::dragBeginSignal, event );
+		RunTimeTypedPtr data = dispatchEvent( m_lastButtonPressGadget.get(), &Gadget::dragBeginSignal, event );
 		if( data )
 		{
 			const_cast<DragDropEvent &>( event ).sourceGadget = m_lastButtonPressGadget;
@@ -1243,10 +1431,9 @@ bool ViewportGadget::dragEnter( GadgetPtr gadget, const DragDropEvent &event )
 	}
 	else
 	{
-		std::vector<GadgetPtr> gadgets;
-		gadgetsAt( V2f( event.line.p0.x, event.line.p0.y ), gadgets );
+		std::vector<Gadget*> gadgets = gadgetsAtInternal( V2f( event.line.p0.x, event.line.p0.y ), true );
 
-		GadgetPtr dragDestination = updatedDragDestination( gadgets, event );
+		Gadget* dragDestination = updatedDragDestination( gadgets, event );
 		if( dragDestination )
 		{
 			const_cast<DragDropEvent &>( event ).destinationGadget = dragDestination;
@@ -1258,7 +1445,7 @@ bool ViewportGadget::dragEnter( GadgetPtr gadget, const DragDropEvent &event )
 
 bool ViewportGadget::dragMove( GadgetPtr gadget, const DragDropEvent &event )
 {
-	if( m_cameraInMotion )
+	if( m_cameraInMotion || m_cameraMotionDuringDrag )
 	{
 		if( getCameraEditable() )
 		{
@@ -1279,14 +1466,13 @@ bool ViewportGadget::dragMove( GadgetPtr gadget, const DragDropEvent &event )
 		// step as an optimisation.
 		if( !event.destinationGadget || !event.data->isInstanceOf( IECore::NullObjectTypeId ) )
 		{
-			std::vector<GadgetPtr> gadgets;
-			gadgetsAt( V2f( event.line.p0.x, event.line.p0.y ), gadgets );
+			std::vector<Gadget*> gadgets = gadgetsAtInternal( V2f( event.line.p0.x, event.line.p0.y ), true );
 
 			// update drag destination
-			GadgetPtr updatedDestination = updatedDragDestination( gadgets, event );
+			Gadget* updatedDestination = updatedDragDestination( gadgets, event );
 			if( updatedDestination != event.destinationGadget )
 			{
-				GadgetPtr previousDestination = event.destinationGadget;
+				Gadget* previousDestination = event.destinationGadget.get();
 				const_cast<DragDropEvent &>( event ).destinationGadget = updatedDestination;
 				if( previousDestination )
 				{
@@ -1298,7 +1484,7 @@ bool ViewportGadget::dragMove( GadgetPtr gadget, const DragDropEvent &event )
 		// dispatch drag move to current destination
 		if( event.destinationGadget )
 		{
-			return dispatchEvent( event.destinationGadget, &Gadget::dragMoveSignal, event );
+			return dispatchEvent( event.destinationGadget.get(), &Gadget::dragMoveSignal, event );
 		}
 	}
 
@@ -1384,6 +1570,12 @@ void ViewportGadget::trackDrag( const DragDropEvent &event )
 
 void ViewportGadget::trackDragIdle()
 {
+	if( m_cameraMotionDuringDrag )
+	{
+		// If the user engages an explicit track using the middle mouse button, don't do autoscrolling
+		return;
+	}
+
 	std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
 	std::chrono::duration<float> duration( now - m_dragTrackingTime );
 	// Avoid excessive movements if some other process causes a large delay
@@ -1404,7 +1596,7 @@ void ViewportGadget::trackDragIdle()
 	dirty( DirtyType::Render );
 }
 
-void ViewportGadget::updateMotionState( const DragDropEvent &event, bool initialEvent )
+void ViewportGadget::updateMotionState( const ButtonEvent &event, bool initialEvent )
 {
 	if( !m_preciseMotionAllowed )
 	{
@@ -1436,7 +1628,7 @@ void ViewportGadget::updateMotionState( const DragDropEvent &event, bool initial
 	m_preciseMotionEnabled = shiftHeld;
 }
 
-V2f ViewportGadget::motionPositionFromEvent( const DragDropEvent &event ) const
+V2f ViewportGadget::motionPositionFromEvent( const ButtonEvent &event ) const
 {
 	V2f eventPosition( event.line.p1.x, event.line.p1.y );
 	if( m_preciseMotionAllowed )
@@ -1450,11 +1642,11 @@ V2f ViewportGadget::motionPositionFromEvent( const DragDropEvent &event ) const
 	}
 }
 
-GadgetPtr ViewportGadget::updatedDragDestination( std::vector<GadgetPtr> &gadgets, const DragDropEvent &event )
+Gadget* ViewportGadget::updatedDragDestination( std::vector<Gadget*> &gadgets, const DragDropEvent &event )
 {
-	for( std::vector<GadgetPtr>::const_iterator it = gadgets.begin(), eIt = gadgets.end(); it != eIt; it++ )
+	for( Gadget *it : gadgets )
 	{
-		GadgetPtr gadget = *it;
+		Gadget* gadget = it;
 		while( gadget && gadget != this )
 		{
 			if( gadget == event.destinationGadget )
@@ -1484,16 +1676,16 @@ GadgetPtr ViewportGadget::updatedDragDestination( std::vector<GadgetPtr> &gadget
 	// keep the existing destination if it's also the source.
 	if( event.destinationGadget && event.destinationGadget == event.sourceGadget )
 	{
-		return event.destinationGadget;
+		return event.destinationGadget.get();
 	}
 
 	// and if that's not the case then give the drag source another chance
 	// to become the destination again.
 	if( event.sourceGadget )
 	{
-		if( dispatchEvent( event.sourceGadget, &Gadget::dragEnterSignal, event ) )
+		if( dispatchEvent( event.sourceGadget.get(), &Gadget::dragEnterSignal, event ) )
 		{
-			return event.sourceGadget;
+			return event.sourceGadget.get();
 		}
 	}
 
@@ -1507,7 +1699,7 @@ bool ViewportGadget::dragLeave( GadgetPtr gadget, const DragDropEvent &event )
 	{
 		GadgetPtr previousDestination = event.destinationGadget;
 		const_cast<DragDropEvent &>( event ).destinationGadget = nullptr;
-		dispatchEvent( previousDestination, &Gadget::dragLeaveSignal, event );
+		dispatchEvent( previousDestination.get(), &Gadget::dragLeaveSignal, event );
 	}
 	return true;
 }
@@ -1522,7 +1714,7 @@ bool ViewportGadget::drop( GadgetPtr gadget, const DragDropEvent &event )
 	{
 		if( event.destinationGadget )
 		{
-			return dispatchEvent( event.destinationGadget, &Gadget::dropSignal, event );
+			return dispatchEvent( event.destinationGadget.get(), &Gadget::dropSignal, event );
 		}
 		else
 		{
@@ -1533,6 +1725,9 @@ bool ViewportGadget::drop( GadgetPtr gadget, const DragDropEvent &event )
 
 bool ViewportGadget::dragEnd( GadgetPtr gadget, const DragDropEvent &event )
 {
+	m_dragButton = ButtonEvent::None;
+	m_cameraMotionDuringDrag = false;
+
 	if( m_cameraInMotion )
 	{
 		m_cameraInMotion = false;
@@ -1551,7 +1746,7 @@ bool ViewportGadget::dragEnd( GadgetPtr gadget, const DragDropEvent &event )
 		m_dragTrackingIdleConnection.disconnect();
 		if( event.sourceGadget )
 		{
-			return dispatchEvent( event.sourceGadget, &Gadget::dragEndSignal, event );
+			return dispatchEvent( event.sourceGadget.get(), &Gadget::dragEndSignal, event );
 		}
 	}
 	return false;
@@ -1559,7 +1754,7 @@ bool ViewportGadget::dragEnd( GadgetPtr gadget, const DragDropEvent &event )
 
 bool ViewportGadget::wheel( GadgetPtr gadget, const ButtonEvent &event )
 {
-	if( m_cameraInMotion )
+	if( m_cameraInMotion || m_cameraMotionDuringDrag )
 	{
 		// we can't embed a dolly inside whatever other motion we already
 		// started - we get here when the user accidentally rotates
@@ -1618,11 +1813,11 @@ void ViewportGadget::eventToGadgetSpace( ButtonEvent &event, Gadget *gadget )
 }
 
 template<typename Event, typename Signal>
-typename Signal::result_type ViewportGadget::dispatchEvent( std::vector<GadgetPtr> &gadgets, Signal &(Gadget::*signalGetter)(), const Event &event, GadgetPtr &handler )
+typename Signal::result_type ViewportGadget::dispatchEvent( std::vector<Gadget*> &gadgets, Signal &(Gadget::*signalGetter)(), const Event &event, Gadget* &handler )
 {
-	for( std::vector<GadgetPtr>::const_iterator it = gadgets.begin(), eIt = gadgets.end(); it != eIt; it++ )
+	for( Gadget* it : gadgets )
 	{
-		GadgetPtr gadget = *it;
+		Gadget* gadget = it;
 		if( !gadget->enabled() )
 		{
 			continue;
@@ -1642,12 +1837,12 @@ typename Signal::result_type ViewportGadget::dispatchEvent( std::vector<GadgetPt
 }
 
 template<typename Event, typename Signal>
-typename Signal::result_type ViewportGadget::dispatchEvent( GadgetPtr gadget, Signal &(Gadget::*signalGetter)(), const Event &event )
+typename Signal::result_type ViewportGadget::dispatchEvent( Gadget* gadget, Signal &(Gadget::*signalGetter)(), const Event &event )
 {
 	Event transformedEvent( event );
-	eventToGadgetSpace( transformedEvent, gadget.get() );
-	Signal &s = (gadget.get()->*signalGetter)();
-	return s( gadget.get(), transformedEvent );
+	eventToGadgetSpace( transformedEvent, gadget );
+	Signal &s = (gadget->*signalGetter)();
+	return s( gadget, transformedEvent );
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1674,10 +1869,10 @@ ViewportGadget::SelectionScope::SelectionScope( const Imath::V3f &corner0InGadge
 	begin( viewportGadget, rasterRegion, gadget->fullTransform(), mode );
 }
 
-ViewportGadget::SelectionScope::SelectionScope( const ViewportGadget *viewportGadget, const Imath::V2f &rasterPosition, std::vector<IECoreGL::HitRecord> &selection, IECoreGL::Selector::Mode mode )
+ViewportGadget::SelectionScope::SelectionScope( const ViewportGadget *viewportGadget, const Imath::Box2f &rasterRegion, std::vector<IECoreGL::HitRecord> &selection, IECoreGL::Selector::Mode mode )
 	:	m_selection( selection )
 {
-	begin( viewportGadget, rasterPosition, M44f(), mode );
+	begin( viewportGadget, rasterRegion, M44f(), mode );
 }
 
 ViewportGadget::SelectionScope::~SelectionScope()

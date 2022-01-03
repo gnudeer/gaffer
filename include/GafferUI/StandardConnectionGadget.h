@@ -75,8 +75,9 @@ class GAFFERUI_API StandardConnectionGadget : public ConnectionGadget
 
 	protected :
 
-		void doRenderLayer( Layer layer, const Style *style ) const override;
-		bool hasLayer( Layer layer ) const override;
+		void renderLayer( Layer layer, const Style *style, RenderReason reason ) const override;
+		unsigned layerMask() const override;
+		Imath::Box3f renderBound() const override;
 
 	private :
 
@@ -146,11 +147,6 @@ class GAFFERUI_API StandardConnectionGadget : public ConnectionGadget
 		boost::signals::scoped_connection m_keyPressConnection;
 		boost::signals::scoped_connection m_keyReleaseConnection;
 };
-
-[[deprecated("Use `StandardConnectionGadget::Iterator` instead")]]
-typedef Gaffer::FilteredChildIterator<Gaffer::TypePredicate<StandardConnectionGadget> > StandardConnectionGadgetIterator;
-[[deprecated("Use `StandardConnectionGadget::RecursiveIterator` instead")]]
-typedef Gaffer::FilteredRecursiveChildIterator<Gaffer::TypePredicate<StandardConnectionGadget> > RecursiveStandardConnectionGadgetIterator;
 
 } // namespace GafferUI
 

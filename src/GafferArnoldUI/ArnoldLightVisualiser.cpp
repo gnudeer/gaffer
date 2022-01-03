@@ -50,8 +50,6 @@
 #include "IECore/TypedData.h"
 #include "IECore/VectorTypedData.h"
 
-#include "ai.h"
-
 using namespace Imath;
 using namespace IECore;
 using namespace IECoreGLPreview;
@@ -101,7 +99,7 @@ struct SurfaceTextureCacheGetterKey
 	MurmurHash hash;
 };
 
-CompoundDataPtr surfaceTextureGetter( const SurfaceTextureCacheGetterKey &key, size_t &cost )
+CompoundDataPtr surfaceTextureGetter( const SurfaceTextureCacheGetterKey &key, size_t &cost, const IECore::Canceller *canceller )
 {
 	cost = key.resolution.x * key.resolution.y * 3 * 4; // 3 x 32bit float channels;
 

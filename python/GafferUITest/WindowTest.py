@@ -398,7 +398,7 @@ class WindowTest( GafferUITest.TestCase ) :
 	def testRemoveOnCloseCrash( self ) :
 
 		parent = GafferUI.Window()
-		parent.setChild( GafferUI.Label( "Hello" ) )
+		parent.setChild( GafferUI.Label( "\n".join( [ "Hello" * 10 ] * 10 ) ) )
 		parent.setVisible( True )
 
 		for i in range( 0, 50 ) :
@@ -424,33 +424,51 @@ class WindowTest( GafferUITest.TestCase ) :
 
 	def testChildWindowDuringShutdown( self ) :
 
-		with GafferUI.Window( "Parent" ) as parent :
+		# On Mac we get intermittent "Window position outside any known screen" messages
+		# from Qt, which we suppress since they're not what we're testing here.
+		contextManager = IECore.CapturingMessageHandler() if sys.platform == "darwin" else _NullContextManager()
 
-			GafferUI.Label( "Parent\n" * 10 )
+		with contextManager :
 
-		with GafferUI.Window( "Child" ) as child :
+			with GafferUI.Window( "Parent" ) as parent :
 
-			GafferUI.Label( "child\n" * 4 )
+				GafferUI.Label( "Parent\n" * 10 )
 
-		parent.setVisible( True )
-		parent.addChildWindow( child )
-		child.setVisible( True )
+			with GafferUI.Window( "Child" ) as child :
 
-		# Delete the child and parent windows, while capturing `sys.stderr`.
-		# This demonstrated a bug which caused Widget's `_EventFilter` to access
-		# an already-deleted QObject, causing PySide to print an exception to
-		# `stderr`.
+				GafferUI.Label( "child\n" * 4 )
 
-		tmpStdErr = six.moves.cStringIO()
-		sys.stderr = tmpStdErr
-		try :
-			del child
-			del parent
-		finally :
-			sys.stderr = sys.__stderr__
+			parent.setVisible( True )
+			parent.addChildWindow( child )
+			child.setVisible( True )
 
-		# If the bug is fixed, nothing should have been printed.
-		self.assertEqual( tmpStdErr.getvalue(), "" )
+			# Delete the child and parent windows, while capturing `sys.stderr`.
+			# This demonstrated a bug which caused Widget's `_EventFilter` to access
+			# an already-deleted QObject, causing PySide to print an exception to
+			# `stderr`.
+
+			tmpStdErr = six.moves.cStringIO()
+			sys.stderr = tmpStdErr
+			try :
+				del child
+				del parent
+			finally :
+				sys.stderr = sys.__stderr__
+
+			# If the bug is fixed, nothing should have been printed.
+			self.assertEqual( tmpStdErr.getvalue(), "" )
+
+## \todo When we finally ditch Python 2, we can use `contextlib.nullcontext()`
+# instead of this.
+class _NullContextManager( object ) :
+
+	def __enter__( self ) :
+
+		pass
+
+	def __exit__( self, type, value, traceBack ) :
+
+		pass
 
 if __name__ == "__main__":
 	unittest.main()

@@ -150,7 +150,7 @@ class HandlesGadget : public Gadget
 
 	protected :
 
-		void doRenderLayer( Layer layer, const Style *style ) const override
+		void renderLayer( Layer layer, const Style *style, RenderReason reason ) const override
 		{
 			if( layer != Layer::MidFront )
 			{
@@ -173,6 +173,11 @@ class HandlesGadget : public Gadget
 			glClear( GL_DEPTH_BUFFER_BIT );
 			glEnable( GL_DEPTH_TEST );
 
+		}
+
+		unsigned layerMask() const override
+		{
+			return (unsigned)Layer::MidFront;
 		}
 
 };
@@ -1246,8 +1251,8 @@ bool TransformTool::keyPress( const GafferUI::KeyEvent &event )
 					if( Animation::canAnimate( plug.get() ) )
 					{
 						const float value = plug->getValue();
-						Animation::CurvePlug *curve = Animation::acquire( plug.get() );
-						curve->addKey( new Animation::Key( s.context()->getTime(), value ) );
+						Animation::CurvePlug* const curve = Animation::acquire( plug.get() );
+						curve->insertKey( s.context()->getTime(), value );
 					}
 				}
 			}
@@ -1281,7 +1286,7 @@ void TransformTool::setValueOrAddKey( Gaffer::FloatPlug *plug, float time, float
 	if( Animation::isAnimated( plug ) )
 	{
 		Animation::CurvePlug *curve = Animation::acquire( plug );
-		curve->addKey( new Animation::Key( time, value ) );
+		curve->insertKey( time, value );
 	}
 	else
 	{

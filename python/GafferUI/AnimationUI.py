@@ -82,13 +82,21 @@ def __setKey( plug, context ) :
 
 	with Gaffer.UndoScope( plug.ancestor( Gaffer.ScriptNode ) ) :
 		curve = Gaffer.Animation.acquire( plug )
-		curve.addKey( Gaffer.Animation.Key( context.getTime(), value ) )
+		if isinstance( plug, Gaffer.BoolPlug ) :
+			curve.addKey( Gaffer.Animation.Key( context.getTime(), value, Gaffer.Animation.Interpolation.Constant ) )
+		else :
+			curve.insertKey( context.getTime(), value )
 
 def __removeKey( plug, key ) :
 
 	with Gaffer.UndoScope( plug.ancestor( Gaffer.ScriptNode ) ) :
 		curve = Gaffer.Animation.acquire( plug )
 		curve.removeKey( key )
+
+def __setKeyInterpolation( plug, key, mode, unused ) :
+
+	with Gaffer.UndoScope( plug.ancestor( Gaffer.ScriptNode ) ) :
+		key.setInterpolation( mode )
 
 def __popupMenu( menuDefinition, plugValueWidget ) :
 
@@ -121,6 +129,23 @@ def __popupMenu( menuDefinition, plugValueWidget ) :
 				"active" : previousKey is not None,
 			}
 		)
+
+		spanKey = curve.getKey( context.getTime() ) or previousKey
+		spanKeyOnThisFrame = spanKey is not None
+		for mode in reversed( sorted( Gaffer.Animation.Interpolation.values.values() ) ) :
+			menuDefinition.prepend(
+				"/Interpolation/%s" % ( mode.name ),
+				{
+					"command" : functools.partial(
+						__setKeyInterpolation,
+						plug,
+						spanKey,
+						mode
+					),
+					"active" : spanKeyOnThisFrame and plugValueWidget._editable( canEditAnimation = True ),
+					"checkBox" : spanKeyOnThisFrame and ( spanKey.getInterpolation() == mode ),
+				}
+			)
 
 		closestKey = curve.closestKey( context.getTime() )
 		closestKeyOnThisFrame = closestKey is not None and math.fabs( context.getTime() - closestKey.getTime() ) * context.getFramesPerSecond() < 0.5

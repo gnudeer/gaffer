@@ -39,21 +39,18 @@ import os
 import re
 import sys
 import glob
-import shutil
-import fnmatch
-import functools
 import platform
-import py_compile
 import subprocess
+import distutils.dir_util
 
 ###############################################################################################
 # Version
 ###############################################################################################
 
 gafferMilestoneVersion = 0 # for announcing major milestones - may contain all of the below
-gafferMajorVersion = 60 # backwards-incompatible changes
-gafferMinorVersion = 7 # new backwards-compatible features
-gafferPatchVersion = 0 # bug fixes
+gafferMajorVersion = 61 # backwards-incompatible changes
+gafferMinorVersion = 1 # new backwards-compatible features
+gafferPatchVersion = 1 # bug fixes
 
 # All of the following must be considered when determining
 # whether or not a change is backwards-compatible
@@ -322,6 +319,11 @@ options.Add(
 	"",
 )
 
+options.Add( "GAFFER_MILESTONE_VERSION", "Milestone version", str( gafferMilestoneVersion ) )
+options.Add( "GAFFER_MAJOR_VERSION", "Major version", str( gafferMajorVersion ) )
+options.Add( "GAFFER_MINOR_VERSION", "Minor version", str( gafferMinorVersion ) )
+options.Add( "GAFFER_PATCH_VERSION", "Patch version", str( gafferPatchVersion ) )
+
 ###############################################################################################
 # Basic environment object. All the other environments will be based on this.
 ###############################################################################################
@@ -329,11 +331,6 @@ options.Add(
 env = Environment(
 
 	options = options,
-
-	GAFFER_MILESTONE_VERSION = str( gafferMilestoneVersion ),
-	GAFFER_MAJOR_VERSION = str( gafferMajorVersion ),
-	GAFFER_MINOR_VERSION = str( gafferMinorVersion ),
-	GAFFER_PATCH_VERSION = str( gafferPatchVersion ),
 
 	CPPDEFINES = [
 		( "GAFFER_MILESTONE_VERSION", "$GAFFER_MILESTONE_VERSION" ),
@@ -637,13 +634,13 @@ basePythonEnv = baseLibEnv.Clone()
 
 basePythonEnv["PYTHON_VERSION"] = subprocess.check_output(
 	[ "python", "-c", "import sys; print( '{}.{}'.format( *sys.version_info[:2] ) )" ],
-	env=commandEnv["ENV"]
+	env=commandEnv["ENV"], universal_newlines=True
 ).strip()
 
 basePythonEnv["PYTHON_ABI_VERSION"] = basePythonEnv["PYTHON_VERSION"]
 basePythonEnv["PYTHON_ABI_VERSION"] += subprocess.check_output(
 	[ "python", "-c", "import sysconfig; print( sysconfig.get_config_var( 'abiflags' ) or '' )" ],
-	env=commandEnv["ENV"]
+	env=commandEnv["ENV"], universal_newlines=True
 ).strip()
 
 # if BOOST_PYTHON_LIB_SUFFIX is provided, use it
@@ -680,6 +677,29 @@ else :
 	basePythonEnv.Append(
 		CPPPATH = [ "$BUILD_DIR/include/python$PYTHON_ABI_VERSION" ]
 	)
+
+###############################################################################################
+# Arnold configuration
+###############################################################################################
+
+arnoldInstallRoot = ""
+if env["ARNOLD_ROOT"] :
+	arnoldHeader = env.subst( "$ARNOLD_ROOT/include/ai_version.h" )
+	if not os.path.exists( arnoldHeader ) :
+		sys.stderr.write( "ERROR : unable to find \"{}\".\n".format( arnoldHeader ) )
+		Exit( 1 )
+
+	arnoldVersions = {}
+	for line in open( arnoldHeader ) :
+		m = re.match( "^#define AI_VERSION_(ARCH|MAJOR)_NUM\s*([0-9]+)", line )
+		if m :
+			arnoldVersions[m.group(1)] = m.group( 2 )
+
+	if set( arnoldVersions.keys() ) != { "ARCH", "MAJOR" } :
+		sys.stderr.write( "ERROR : unable to parse \"{}\".\n".format( arnoldHeader ) )
+		Exit( 1 )
+
+	arnoldInstallRoot = "${{BUILD_DIR}}/arnold/{ARCH}.{MAJOR}".format( **arnoldVersions )
 
 ###############################################################################################
 # Definitions for the libraries we wish to build
@@ -722,10 +742,10 @@ libraries = {
 		},
 		"pythonEnvAppends" : {
 			"LIBS" : [ "IECoreImage$CORTEX_LIB_SUFFIX", "IECoreScene$CORTEX_LIB_SUFFIX", "IECoreGL$CORTEX_LIB_SUFFIX", "GafferUI", "GafferBindings" ],
-			 # Prevent Qt clashing with boost::signals - we can remove
-			 # this if we move to boost::signals2.
-			 "CXXFLAGS" : [ "-DQT_NO_KEYWORDS" ],
 		},
+		"mocSourceFiles" : [
+			"src/GafferUIModule/PathListingWidgetBinding.cpp",
+		],
 		"apps" : [ "browser", "gui", "screengrab", "view" ],
 	},
 
@@ -843,41 +863,88 @@ libraries = {
 		},
 	},
 
-	"GafferArnold" : {
+	"IECoreArnold" : {
 		"envAppends" : {
-			"CPPPATH" : [ "$ARNOLD_ROOT/include" ],
 			"LIBPATH" : [ "$ARNOLD_ROOT/bin" ],
-			"LIBS" : [ "Gaffer", "GafferScene", "GafferDispatch", "ai", "GafferVDB", "openvdb$VDB_LIB_SUFFIX",  "IECoreScene$CORTEX_LIB_SUFFIX", "IECoreArnold$CORTEX_LIB_SUFFIX", "IECoreVDB$CORTEX_LIB_SUFFIX", "GafferOSL" ],
+			## \todo Remove GafferScene. We need it at present to get access to `IECoreScenePreview::Renderer`,
+			# but IECoreArnold must never depend on Gaffer code; logically it is in the layer below Gaffer.
+			"LIBS" : [ "GafferScene", "ai", "IECoreScene$CORTEX_LIB_SUFFIX", "IECoreVDB$CORTEX_LIB_SUFFIX", "openvdb$VDB_LIB_SUFFIX" ],
+			"CXXFLAGS" : [ "-DAI_ENABLE_DEPRECATION_WARNINGS" ],
+			"CPPPATH" : [ "$ARNOLD_ROOT/include" ],
 		},
 		"pythonEnvAppends" : {
-			"CPPPATH" : [ "$ARNOLD_ROOT/include" ],
 			"LIBPATH" : [ "$ARNOLD_ROOT/bin" ],
-			"LIBS" : [ "Gaffer", "GafferScene", "GafferBindings", "GafferVDB", "GafferDispatch", "GafferArnold", "GafferOSL", "IECoreScene$CORTEX_LIB_SUFFIX" ],
+			"LIBS" : [ "IECoreScene$CORTEX_LIB_SUFFIX", "IECoreArnold" ],
+			"CXXFLAGS" : [ "-DAI_ENABLE_DEPRECATION_WARNINGS" ],
+			"CPPPATH" : [ "$ARNOLD_ROOT/include" ],
 		},
 		"requiredOptions" : [ "ARNOLD_ROOT" ],
-		"additionalFiles" : [ "arnold/plugins/gaffer.mtd" ],
+		"installRoot" : arnoldInstallRoot,
+	},
+
+	"IECoreArnoldTest" : {
+		"additionalFiles" : [ "python/IECoreArnoldTest/metadata", "python/IECoreArnoldTest/assFiles" ],
+		"requiredOptions" : [ "ARNOLD_ROOT" ],
+		"installRoot" : arnoldInstallRoot,
+	},
+
+	"GafferArnold" : {
+		"envAppends" : {
+			"LIBPATH" : [ "$ARNOLD_ROOT/bin" ],
+			"LIBS" : [ "Gaffer", "GafferScene", "GafferDispatch", "ai", "GafferVDB", "openvdb$VDB_LIB_SUFFIX",  "IECoreScene$CORTEX_LIB_SUFFIX", "IECoreVDB$CORTEX_LIB_SUFFIX", "IECoreArnold", "GafferOSL" ],
+			"CXXFLAGS" : [ "-DAI_ENABLE_DEPRECATION_WARNINGS" ],
+			"CPPPATH" : [ "$ARNOLD_ROOT/include" ],
+		},
+		"pythonEnvAppends" : {
+			"LIBPATH" : [ "$ARNOLD_ROOT/bin" ],
+			"LIBS" : [ "Gaffer", "GafferScene", "GafferBindings", "GafferVDB", "GafferDispatch", "GafferArnold", "GafferOSL", "IECoreScene$CORTEX_LIB_SUFFIX", "IECoreArnold" ],
+			"CXXFLAGS" : [ "-DAI_ENABLE_DEPRECATION_WARNINGS" ],
+			"CPPPATH" : [ "$ARNOLD_ROOT/include" ],
+		},
+		"requiredOptions" : [ "ARNOLD_ROOT" ],
+		"additionalFiles" : [ "arnoldPlugins/gaffer.mtd" ],
+		"installRoot" : arnoldInstallRoot,
 	},
 
 	"GafferArnoldTest" : {
 		"additionalFiles" : glob.glob( "python/GafferArnoldTest/volumes/*" ) + glob.glob( "python/GafferArnoldTest/metadata/*" ) + glob.glob( "python/GafferArnoldTest/images/*" ),
 		"requiredOptions" : [ "ARNOLD_ROOT" ],
+		"installRoot" : arnoldInstallRoot,
 	},
 
 	"GafferArnoldUI" : {
 		"envAppends" : {
-			"CPPPATH" : [ "$ARNOLD_ROOT/include" ],
 			"LIBPATH" : [ "$ARNOLD_ROOT/bin" ],
 			"LIBS" : [ "IECoreScene$CORTEX_LIB_SUFFIX", "IECoreGL$CORTEX_LIB_SUFFIX", "OpenImageIO$OIIO_LIB_SUFFIX", "oslquery$OSL_LIB_SUFFIX", "Gaffer", "GafferScene", "GafferOSL", "GafferSceneUI", "ai" ],
-			},
+			"CXXFLAGS" : [ "-DAI_ENABLE_DEPRECATION_WARNINGS" ],
+			"CPPPATH" : [ "$ARNOLD_ROOT/include" ],
+		},
 		"pythonEnvAppends" : {
 			"LIBS" : [ "GafferArnoldUI", "GafferSceneUI", "IECoreScene$CORTEX_LIB_SUFFIX" ],
 		},
 		"requiredOptions" : [ "ARNOLD_ROOT" ],
+		"installRoot" : arnoldInstallRoot,
 	},
 
 	"GafferArnoldUITest" : {
 		"additionalFiles" : glob.glob( "python/GafferArnoldUITest/metadata/*" ),
 		"requiredOptions" : [ "ARNOLD_ROOT" ],
+		"installRoot" : arnoldInstallRoot,
+	},
+
+	"GafferArnoldPlugin" : {
+		"envAppends" : {
+			"LIBPATH" : [ "$ARNOLD_ROOT/bin" ],
+			"LIBS" : [ "IECoreArnold", "ai", "IECoreImage$CORTEX_LIB_SUFFIX" ],
+			"CXXFLAGS" : [ "-DAI_ENABLE_DEPRECATION_WARNINGS" ],
+			"CPPPATH" : [ "$ARNOLD_ROOT/include" ],
+		},
+		"envReplacements" : {
+			"SHLIBPREFIX" : "",
+		},
+		"installName" : "arnoldPlugins/Gaffer",
+		"requiredOptions" : [ "ARNOLD_ROOT" ],
+		"installRoot" : arnoldInstallRoot,
 	},
 
 	"GafferOSL" : {
@@ -1029,18 +1096,23 @@ for library in ( "GafferUI", "GafferScene", "GafferSceneUI", "GafferImageUI" ) :
 
 # Add on Qt libraries to definitions - these vary from platform to platform
 
-def addQtLibrary( library, qtLibrary ) :
+def addQtLibrary( library, qtLibrary, pythonOnly = True ) :
 
 	if env["PLATFORM"] == "darwin" :
 		libraries[library]["pythonEnvAppends"].setdefault( "FRAMEWORKS", [] ).append( "Qt" + qtLibrary )
+		if not pythonOnly:
+			libraries[library]["envAppends"].setdefault( "FRAMEWORKS", [] ).append( "Qt" + qtLibrary )
 	else :
 		prefix = "Qt" if int( env["QT_VERSION"] ) < 5 else "Qt${QT_VERSION}"
 		libraries[library]["pythonEnvAppends"]["LIBS"].append( prefix + qtLibrary )
+		if not pythonOnly:
+			libraries[library]["envAppends"]["LIBS"].append( prefix + qtLibrary )
 
 for library in ( "GafferUI", ) :
-	addQtLibrary( library, "Core" )
+	addQtLibrary( library, "Core", False )
 	addQtLibrary( library, "Gui" )
 	addQtLibrary( library, "OpenGL" )
+	addQtLibrary( library, "Test" )
 	if int( env["QT_VERSION"] ) > 4 :
 		addQtLibrary( library, "Widgets" )
 
@@ -1065,16 +1137,23 @@ for libraryName, libraryDef in libraries.items() :
 	libEnv = baseLibEnv.Clone()
 	libEnv.Append( CXXFLAGS = "-D{0}_EXPORTS".format( libraryName ) )
 	libEnv.Append( **(libraryDef.get( "envAppends", {} )) )
+	libEnv.Replace( **(libraryDef.get( "envReplacements", {} )) )
+
+	installRoot = libraryDef.get( "installRoot", "$BUILD_DIR" )
 
 	# library
 
 	librarySource = sorted( glob.glob( "src/" + libraryName + "/*.cpp" ) + glob.glob( "src/" + libraryName + "/*/*.cpp" ) )
 	if librarySource :
 
-		library = libEnv.SharedLibrary( "lib/" + libraryName, librarySource )
+		libraryInstallName = libraryDef.get( "installName", "lib/" + libraryName )
+		library = libEnv.SharedLibrary( libraryInstallName, librarySource )
 		libEnv.Default( library )
 
-		libraryInstall = libEnv.Install( "$BUILD_DIR/lib", library )
+		libraryInstall = libEnv.Install(
+			os.path.join( installRoot, os.path.dirname( libraryInstallName ) ),
+			library
+		)
 		libEnv.Alias( "build", libraryInstall )
 
 	# header install
@@ -1092,7 +1171,7 @@ for libraryName, libraryDef in libraries.items() :
 	)
 
 	for header in headers :
-		headerInstall = env.Command( "$BUILD_DIR/" + header, header, "sed \"" + sedSubstitutions + "\" $SOURCE > $TARGET" )
+		headerInstall = env.Command( os.path.join( installRoot, header ), header, "sed \"" + sedSubstitutions + "\" $SOURCE > $TARGET" )
 		libEnv.Alias( "build", headerInstall )
 
 	# bindings library
@@ -1109,7 +1188,7 @@ for libraryName, libraryDef in libraries.items() :
 		bindingsLibrary = bindingsEnv.SharedLibrary( "lib/" + libraryName + "Bindings", bindingsSource )
 		bindingsEnv.Default( bindingsLibrary )
 
-		bindingsLibraryInstall = bindingsEnv.Install( "$BUILD_DIR/lib", bindingsLibrary )
+		bindingsLibraryInstall = bindingsEnv.Install( os.path.join( installRoot, "lib" ), bindingsLibrary )
 		env.Alias( "build", bindingsLibraryInstall )
 
 	# bindings header install
@@ -1120,7 +1199,7 @@ for libraryName, libraryDef in libraries.items() :
 	)
 
 	for header in bindingsHeaders :
-		headerInstall = env.Command( "$BUILD_DIR/" + header, header, "sed \"" + sedSubstitutions + "\" $SOURCE > $TARGET" )
+		headerInstall = env.Command( os.path.join( installRoot, header ), header, "sed \"" + sedSubstitutions + "\" $SOURCE > $TARGET" )
 		bindingsEnv.Alias( "build", headerInstall )
 
 	# python module binary component
@@ -1149,27 +1228,38 @@ for libraryName, libraryDef in libraries.items() :
 		pythonModule = pythonModuleEnv.SharedLibrary( "python/" + libraryName + "/_" + libraryName, pythonModuleSource )
 		pythonModuleEnv.Default( pythonModule )
 
-		moduleInstall = pythonModuleEnv.Install( "$BUILD_DIR/python/" + libraryName, pythonModule )
+		moduleInstall = pythonModuleEnv.Install( os.path.join( installRoot, "python", libraryName ), pythonModule )
 		pythonModuleEnv.Alias( "build", moduleInstall )
+
+	# Moc preprocessing, for QObject derived classes. SCons does include a "qt" tool that
+	# can scan files automatically for the Q_OBJECT macro, but it hasn't been updated for Qt 5.
+	# We don't need `moc` for many files, so we just list them manually and emit the `moc`
+	# command ourselves.
+
+	for sourceFile in libraryDef.get( "mocSourceFiles", [] ) :
+		mocOutput = commandEnv.Command( os.path.splitext( sourceFile )[0] + ".moc", sourceFile, "moc $SOURCE -o $TARGET" )
+		# Somehow the above leads to a circular dependency between `mocOutput` and itself.
+		# Tell SCons not to worry. The official SCons tool does the same.
+		env.Ignore( mocOutput, mocOutput )
 
 	# python component of python module
 
-	pythonFiles = glob.glob( "python/" + libraryName + "/*.py" ) + glob.glob( "python/" + libraryName + "/*/*.py" )
+	pythonFiles = glob.glob( "python/" + libraryName + "/*.py" ) + glob.glob( "python/" + libraryName + "/*/*.py" ) + glob.glob( "python/" + libraryName + "/*/*/*.py" )
 	for pythonFile in pythonFiles :
-		pythonFileInstall = env.Command( "$BUILD_DIR/" + pythonFile, pythonFile, "sed \"" + sedSubstitutions + "\" $SOURCE > $TARGET" )
+		pythonFileInstall = env.Command( os.path.join( installRoot, pythonFile ), pythonFile, "sed \"" + sedSubstitutions + "\" $SOURCE > $TARGET" )
 		env.Alias( "build", pythonFileInstall )
 
 	# apps
 
 	for app in libraryDef.get( "apps", [] ) :
-		appInstall = env.InstallAs("$BUILD_DIR/apps/{app}/{app}-1.py".format( app=app ), "apps/{app}/{app}-1.py".format( app=app ) )
+		appInstall = env.InstallAs( os.path.join( installRoot, "apps", app, "{app}-1.py".format( app=app ) ), "apps/{app}/{app}-1.py".format( app=app ) )
 		env.Alias( "build", appInstall )
 
 	# startup files
 
 	for startupDir in libraryDef.get( "apps", [] ) + [ libraryName ] :
 		for startupFile in glob.glob( "startup/{startupDir}/*.py".format( startupDir=startupDir ) ) :
-			startupFileInstall = env.InstallAs( "$BUILD_DIR/" + startupFile, startupFile )
+			startupFileInstall = env.InstallAs( os.path.join( installRoot, startupFile ), startupFile )
 			env.Alias( "build", startupFileInstall )
 
 	# additional files
@@ -1177,13 +1267,13 @@ for libraryName, libraryDef in libraries.items() :
 	for additionalFile in libraryDef.get( "additionalFiles", [] ) :
 		if additionalFile in pythonFiles :
 			continue
-		additionalFileInstall = env.InstallAs( "$BUILD_DIR/" + additionalFile, additionalFile )
+		additionalFileInstall = env.InstallAs( os.path.join( installRoot, additionalFile ), additionalFile )
 		env.Alias( "build", additionalFileInstall )
 
 	# osl headers
 
 	for oslHeader in libraryDef.get( "oslHeaders", [] ) :
-		oslHeaderInstall = env.InstallAs( "$BUILD_DIR/" + oslHeader, oslHeader )
+		oslHeaderInstall = env.InstallAs( os.path.join( installRoot, oslHeader ), oslHeader )
 		env.Alias( "oslHeaders", oslHeaderInstall )
 		env.Alias( "build", oslHeaderInstall )
 
@@ -1195,7 +1285,7 @@ for libraryName, libraryDef in libraries.items() :
 
 	for oslShader in libraryDef.get( "oslShaders", [] ) :
 		env.Alias( "build", oslShader )
-		compiledFile = commandEnv.Command( "$BUILD_DIR/" + os.path.splitext( oslShader )[0] + ".oso", oslShader, buildOSL )
+		compiledFile = commandEnv.Command( os.path.join( installRoot, os.path.splitext( oslShader )[0] + ".oso" ), oslShader, buildOSL )
 		env.Depends( compiledFile, "oslHeaders" )
 		env.Alias( "build", compiledFile )
 
@@ -1214,7 +1304,7 @@ for libraryName, libraryDef in libraries.items() :
 		f.write( env.subst( "from $GAFFER_STUB_MODULE import $GAFFER_STUB_CLASS as %s" % classLoadableName ) )
 
 	for classStub in libraryDef.get( "classStubs", [] ) :
-		stubFileName = "$BUILD_DIR/" + classStub[1] + "/" + classStub[1].rpartition( "/" )[2] + "-1.py"
+		stubFileName = os.path.join( installRoot, classStub[1], classStub[1].rpartition( "/" )[2] + "-1.py" )
 		stubEnv = env.Clone(
 			GAFFER_STUB_MODULE = libraryName,
 			GAFFER_STUB_CLASS = classStub[0],
@@ -1495,11 +1585,9 @@ def locateDocs( docRoot, env ) :
 def buildDocs( target, source, env ) :
 
 	# Run sphinx to generate the final documentation.
-	# Run via `python` as sphinx hard-codes `/usr/bin/python`.
 
 	subprocess.check_call(
 		[
-			"python",
 			findOnPath( env.subst( "$SPHINX" ), env["ENV"]["PATH"] ),
 			"-b", "html",
 			str( source[0] ), os.path.dirname( str( target[0] ) )
@@ -1584,7 +1672,7 @@ for f in exampleFiles :
 
 def installer( target, source, env ) :
 
-	shutil.copytree( str( source[0] ), str( target[0] ), symlinks=True )
+	distutils.dir_util.copy_tree( str( source[0] ), str( target[0] ), preserve_symlinks=True, update=True )
 
 if env.subst( "$PACKAGE_FILE" ).endswith( ".dmg" ) :
 

@@ -111,6 +111,8 @@ class GAFFERSCENE_API InteractiveRender : public Gaffer::ComputeNode
 
 		bool acceptsInput( const Gaffer::Plug *plug, const Gaffer::Plug *inputPlug ) const override;
 
+		IECoreScenePreview::Renderer *renderer() { return m_renderer.get(); }
+
 	private :
 
 		ScenePlug *adaptedInPlug();
@@ -142,11 +144,6 @@ class GAFFERSCENE_API InteractiveRender : public Gaffer::ComputeNode
 };
 
 IE_CORE_DECLAREPTR( InteractiveRender );
-
-[[deprecated("Use `InteractiveRender::Iterator` instead")]]
-typedef Gaffer::FilteredChildIterator<Gaffer::TypePredicate<InteractiveRender> > InteractiveRenderIterator;
-[[deprecated("Use `InteractiveRender::RecursiveIterator` instead")]]
-typedef Gaffer::FilteredRecursiveChildIterator<Gaffer::TypePredicate<InteractiveRender> > RecursiveInteractiveRenderIterator;
 
 } // namespace GafferScene
 

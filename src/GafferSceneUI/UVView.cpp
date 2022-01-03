@@ -397,7 +397,7 @@ class GridGadget : public GafferUI::Gadget
 
 	protected :
 
-		void doRenderLayer( Layer layer, const Style *style ) const override
+		void renderLayer( Layer layer, const Style *style, RenderReason reason ) const override
 		{
 			if( layer != Layer::Main && layer != Layer::MidBack && layer != Layer::Front )
 			{
@@ -472,6 +472,18 @@ class GridGadget : public GafferUI::Gadget
 					}
 				}
 			}
+		}
+
+		Box3f renderBound() const override
+		{
+			Box3f b;
+			b.makeInfinite();
+			return b;
+		}
+
+		unsigned layerMask() const override
+		{
+			return Layer::Main | Layer::MidBack | Layer::Front;
 		}
 
 };

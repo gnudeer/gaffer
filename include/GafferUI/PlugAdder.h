@@ -70,7 +70,9 @@ class GAFFERUI_API PlugAdder : public ConnectionCreator
 
 	protected :
 
-		void doRenderLayer( Layer layer, const Style *style ) const override;
+		void renderLayer( Layer layer, const Style *style, RenderReason reason ) const override;
+		unsigned layerMask() const override;
+		Imath::Box3f renderBound() const override;
 
 		void applyEdgeMetadata( Gaffer::Plug *plug, bool opposite = false ) const;
 
@@ -93,11 +95,6 @@ class GAFFERUI_API PlugAdder : public ConnectionCreator
 };
 
 IE_CORE_DECLAREPTR( PlugAdder )
-
-[[deprecated("Use `PlugAdder::Iterator` instead")]]
-typedef Gaffer::FilteredChildIterator<Gaffer::TypePredicate<PlugAdder> > PlugAdderIterator;
-[[deprecated("Use `PlugAdder::RecursiveIterator` instead")]]
-typedef Gaffer::FilteredRecursiveChildIterator<Gaffer::TypePredicate<PlugAdder> > RecursivePlugAdderIterator;
 
 } // namespace GafferUI
 

@@ -101,6 +101,25 @@ class GAFFER_API ScriptNode : public Node
 		const StandardSet *selection() const;
 		//@}
 
+		//! @name Focus
+		/// The ScriptNode maintains an optional, single, 'focus' node. This
+		/// may be set by the user to the node whose output they are currently
+		/// considering in their actions. This can be used by tools and scripts
+		/// as an anchor for informational displays or programmatic operations.
+		/// The focus set provides a read-only view of the focus node, primarily
+		/// for use with NodeSetEditor.setNodeSet().
+		////////////////////////////////////////////////////////////////////
+		//@{
+		typedef boost::signal<void ( ScriptNode *, Node * ), Gaffer::CatchingSignalCombiner<void> > FocusChangedSignal;
+		void setFocus( Node *node );
+		Node *getFocus();
+		const Node *getFocus() const;
+		FocusChangedSignal &focusChangedSignal();
+		Set *focusSet();
+		const Set *focusSet() const;
+		//@}
+
+
 		//! @name History and undo
 		/// Certain methods in the graph API are undoable on request.
 		/// These methods are implemented in terms of the Action class -
@@ -282,6 +301,14 @@ class GAFFER_API ScriptNode : public Node
 		bool selectionSetAcceptor( const Set *s, const Set::Member *m );
 		StandardSetPtr m_selection;
 
+		// Focus
+		// =====
+
+		class FocusSet;
+		IE_CORE_DECLAREPTR( FocusSet );
+		FocusSetPtr m_focus;
+		FocusChangedSignal m_focusChangedSignal;
+
 		// Actions and undo
 		// ================
 
@@ -295,6 +322,9 @@ class GAFFER_API ScriptNode : public Node
 		void pushUndoState( UndoScope::State state, const std::string &mergeGroup );
 		void addAction( ActionPtr action );
 		void popUndoState();
+
+		// Called by undo/redo to cleanup after action stage
+		void postActionStageCleanup();
 
 		typedef std::stack<UndoScope::State> UndoStateStack;
 		typedef std::list<CompoundActionPtr> UndoList;

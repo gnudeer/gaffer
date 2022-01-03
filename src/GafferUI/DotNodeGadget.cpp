@@ -49,7 +49,6 @@
 #include "Gaffer/UndoScope.h"
 
 #include "IECoreGL/GL.h"
-#include "IECoreGL/Selector.h"
 
 #include "boost/bind.hpp"
 
@@ -88,28 +87,31 @@ DotNodeGadget::~DotNodeGadget()
 {
 }
 
-void DotNodeGadget::doRenderLayer( Layer layer, const Style *style ) const
+Box3f DotNodeGadget::bound() const
 {
+	// Take base class bound, but make it square, since we always render as a perfect circle
+	Box3f b = StandardNodeGadget::bound();
+	const V3f s = b.size();
+	V3f c = b.center();
+	const float radius = std::min( s.x, s.y ) / 2.0f;
+	V3f offset( radius, radius, 0.0f );
+	return Box3f( c - offset, c + offset );
+}
+
+void DotNodeGadget::renderLayer( Layer layer, const Style *style, RenderReason reason ) const
+{
+	StandardNodeGadget::renderLayer( layer, style, reason );
+
 	if( layer != GraphLayer::Nodes )
 	{
-		return NodeGadget::doRenderLayer( layer, style );
+		if( !m_label.empty() && !isSelectionRender( reason ) )
+		{
+			glPushMatrix();
+			IECoreGL::glTranslate( m_labelPosition );
+			style->renderText( Style::LabelText, m_label );
+			glPopMatrix();
+		}
 	}
-
-	Style::State state = getHighlighted() ? Style::HighlightedState : Style::NormalState;
-
-	const Box3f b = bound();
-	const V3f s = b.size();
-	style->renderNodeFrame( Box2f( V2f( 0 ), V2f( 0 ) ), std::min( s.x, s.y ) / 2.0f, state, userColor() );
-
-	if( !m_label.empty() && !IECoreGL::Selector::currentSelector() )
-	{
-		glPushMatrix();
-		IECoreGL::glTranslate( m_labelPosition );
-		style->renderText( Style::LabelText, m_label );
-		glPopMatrix();
-	}
-
-	NodeGadget::doRenderLayer( layer, style );
 }
 
 Gaffer::Dot *DotNodeGadget::dotNode()

@@ -314,7 +314,7 @@ void StandardConnectionGadget::createConnection( Gaffer::Plug *endpoint )
 	}
 }
 
-void StandardConnectionGadget::doRenderLayer( Layer layer, const Style *style ) const
+void StandardConnectionGadget::renderLayer( Layer layer, const Style *style, RenderReason reason ) const
 {
 	// Connections get rendered below NodeGadgets but over BackdropGadgets
 	if( layer != GraphLayer::Connections )
@@ -323,7 +323,7 @@ void StandardConnectionGadget::doRenderLayer( Layer layer, const Style *style ) 
 	}
 
 	const_cast<StandardConnectionGadget *>( this )->updateConnectionGeometry();
-	const Style::State state = highlighted() ? Style::HighlightedState : Style::NormalState;
+	const Style::State state = highlighted() ? Style::HighlightedState : ( m_active ? Style::NormalState : Style::DisabledState );
 
 	V3f minimisedSrcPos, minimisedSrcTangent;
 	minimisedPositionAndTangent( state == Style::HighlightedState, minimisedSrcPos, minimisedSrcTangent );
@@ -353,9 +353,20 @@ void StandardConnectionGadget::doRenderLayer( Layer layer, const Style *style ) 
 	}
 }
 
-bool StandardConnectionGadget::hasLayer( Layer layer ) const
+unsigned StandardConnectionGadget::layerMask() const
 {
-	return layer == GraphLayer::Connections;
+	return (unsigned)GraphLayer::Connections;
+}
+
+Imath::Box3f StandardConnectionGadget::renderBound() const
+{
+	Box3f r = bound();
+
+	// Extend render bound to account for how the initial curve of the connection can stick out
+	// beyond the source point, plus the thickness of the connection line
+	r.min -= V3f( 2.5 );
+	r.max += V3f( 2.5 );
+	return r;
 }
 
 Imath::V3f StandardConnectionGadget::closestPoint( const Imath::V3f& p ) const

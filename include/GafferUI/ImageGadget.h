@@ -82,12 +82,14 @@ class GAFFERUI_API ImageGadget : public Gadget
 
 	protected :
 
-		void doRenderLayer( Layer layer, const Style *style ) const override;
+		void renderLayer( Layer layer, const Style *style, RenderReason reason ) const override;
+		unsigned layerMask() const override;
+		Imath::Box3f renderBound() const override;
 
 	private :
 
 		Imath::Box3f m_bound;
-		// We can't actually generate the GL texture until doRender(), as
+		// We can't actually generate the GL texture until renderLayer(), as
 		// the GL state might not be valid until then. so we store either
 		// the image to convert, the filename to load, or the previously
 		// converted texture in this member.
@@ -96,11 +98,6 @@ class GAFFERUI_API ImageGadget : public Gadget
 };
 
 IE_CORE_DECLAREPTR( ImageGadget )
-
-[[deprecated("Use `ImageGadget::Iterator` instead")]]
-typedef Gaffer::FilteredChildIterator<Gaffer::TypePredicate<ImageGadget> > ImageGadgetIterator;
-[[deprecated("Use `ImageGadget::RecursiveIterator` instead")]]
-typedef Gaffer::FilteredRecursiveChildIterator<Gaffer::TypePredicate<ImageGadget> > RecursiveImageGadgetIterator;
 
 } // namespace GafferUI
 

@@ -105,14 +105,14 @@ class SelectionTool::DragOverlay : public GafferUI::Gadget
 
 	protected :
 
-		void doRenderLayer( Layer layer, const Style *style ) const override
+		void renderLayer( Layer layer, const Style *style, RenderReason reason ) const override
 		{
 			if( layer != Layer::Main )
 			{
-				return Gadget::doRenderLayer( layer, style );
+				return;
 			}
 
-			if( IECoreGL::Selector::currentSelector() )
+			if( isSelectionRender( reason ) )
 			{
 				return;
 			}
@@ -125,6 +125,19 @@ class SelectionTool::DragOverlay : public GafferUI::Gadget
 			b.extendBy( viewportGadget->gadgetToRasterSpace( m_endPosition, this ) );
 
 			style->renderSelectionBox( b );
+		}
+
+		unsigned layerMask() const override
+		{
+			return (unsigned)Layer::Main;
+		}
+
+		Imath::Box3f renderBound() const override
+		{
+			// we draw in raster space so don't have a sensible bound
+			Box3f b;
+			b.makeInfinite();
+			return b;
 		}
 
 	private :

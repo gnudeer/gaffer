@@ -38,9 +38,9 @@
 #include "GafferUI/Gadget.h"
 
 #include "GafferUI/Style.h"
+#include "GafferUI/ViewportGadget.h"
 
 #include "IECoreGL/GL.h"
-#include "IECoreGL/NameStateComponent.h"
 #include "IECoreGL/Selector.h"
 
 #include "IECore/SimpleTypedData.h"
@@ -68,7 +68,6 @@ struct Gadget::Signals : boost::noncopyable
 {
 
 	VisibilityChangedSignal visibilityChangedSignal;
-	RenderRequestSignal renderRequestSignal;
 
 	ButtonSignal buttonPressSignal;
 	ButtonSignal buttonReleaseSignal;
@@ -107,20 +106,6 @@ struct Gadget::Signals : boost::noncopyable
 Gadget::Gadget( const std::string &name )
 	:	GraphComponent( name ), m_style( nullptr ), m_visible( true ), m_enabled( true ), m_highlighted( false ), m_layoutDirty( false ), m_toolTip( "" )
 {
-	std::string n = "__Gaffer::Gadget::" + boost::lexical_cast<std::string>( (size_t)this );
-	m_glName = IECoreGL::NameStateComponent::glNameFromName( n, true );
-}
-
-GadgetPtr Gadget::select( GLuint id )
-{
-	const std::string &name = IECoreGL::NameStateComponent::nameFromGLName( id );
-	if( name.compare( 0, 18, "__Gaffer::Gadget::" ) )
-	{
-		return nullptr;
-	}
-	std::string address = name.c_str() + 18;
-	size_t a = boost::lexical_cast<size_t>( address );
-	return reinterpret_cast<Gadget *>( a );
 }
 
 Gadget::~Gadget()
@@ -189,7 +174,6 @@ void Gadget::setVisible( bool visible )
 		emitDescendantVisibilityChanged();
 		Signals::emitLazily( m_signals.get(), &Signals::visibilityChangedSignal, this );
 	}
-	Signals::emitLazily( m_signals.get(), &Signals::renderRequestSignal, this );
 	if( p )
 	{
 		p->dirty( DirtyType::Layout );
@@ -209,11 +193,6 @@ void Gadget::emitDescendantVisibilityChanged()
 		(*it)->emitDescendantVisibilityChanged();
 		Signals::emitLazily( (*it)->m_signals.get(), &Signals::visibilityChangedSignal, it->get() );
 	}
-}
-
-bool Gadget::getVisible() const
-{
-	return m_visible;
 }
 
 bool Gadget::visible( Gadget *relativeTo ) const
@@ -310,65 +289,6 @@ Imath::M44f Gadget::fullTransform( const Gadget *ancestor ) const
 	return result;
 }
 
-void Gadget::render() const
-{
-	bound(); // Updates layout if necessary
-	for( int layer = (int)Layer::Back; layer <= (int)Layer::Front; ++layer )
-	{
-		renderLayer( (Layer)layer, /* currentStyle = */ nullptr );
-	}
-}
-
-void Gadget::renderLayer( Layer layer, const Style *currentStyle ) const
-{
-	const bool haveTransform = m_transform != M44f();
-	if( haveTransform )
-	{
-		glPushMatrix();
-		glMultMatrixf( m_transform.getValue() );
-	}
-
-		if( !currentStyle )
-		{
-			currentStyle = style();
-			currentStyle->bind();
-		}
-		else
-		{
-			if( m_style )
-			{
-				m_style->bind();
-				currentStyle = m_style.get();
-			}
-		}
-
-		if( IECoreGL::Selector *selector = IECoreGL::Selector::currentSelector() )
-		{
-			selector->loadName( m_glName );
-		}
-
-		doRenderLayer( layer, currentStyle );
-
-		for( ChildContainer::const_iterator it=children().begin(); it!=children().end(); it++ )
-		{
-			// Cast is safe because of the guarantees acceptsChild() gives us
-			const Gadget *c = static_cast<const Gadget *>( it->get() );
-			if( !c->getVisible() )
-			{
-				continue;
-			}
-			if( c->hasLayer( layer ) )
-			{
-				c->renderLayer( layer, currentStyle );
-			}
-		}
-
-	if( haveTransform )
-	{
-		glPopMatrix();
-	}
-}
-
 void Gadget::dirty( DirtyType dirtyType )
 {
 	Gadget *g = this;
@@ -378,13 +298,21 @@ void Gadget::dirty( DirtyType dirtyType )
 		{
 			g->m_layoutDirty = true;
 		}
-		Signals::emitLazily( g->m_signals.get(), &Signals::renderRequestSignal, g );
 		if( dirtyType == DirtyType::Bound )
 		{
 			// Bounds changes in children require layout updates in parents.
 			dirtyType = DirtyType::Layout;
 		}
-		g = g->parent<Gadget>();
+		Gadget *p = g->parent<Gadget>();
+		if( !p )
+		{
+			// Found top level gadget, maybe it's a ViewportGadget
+			if( auto viewportGadget = IECore::runTimeCast<ViewportGadget>( g ) )
+			{
+				viewportGadget->childDirtied( dirtyType );
+			}
+		}
+		g = p;
 	}
 }
 
@@ -392,22 +320,20 @@ void Gadget::updateLayout() const
 {
 }
 
-void Gadget::requestRender()
-{
-	// `requestRender()` has been deprecated and replaced by `dirty()` because
-	// it didn't provide the fine-grained control we need. Where extension code
-	// is still using it, we must assume the worst and dirty the layout.
-	dirty( DirtyType::Layout );
-}
-
-void Gadget::doRenderLayer( Layer layer, const Style *style ) const
+void Gadget::renderLayer( Layer layer, const Style *style, RenderReason reason ) const
 {
 }
 
-bool Gadget::hasLayer( Layer layer ) const
+unsigned Gadget::layerMask() const
 {
-	return true;
+	return 0;
 }
+
+Imath::Box3f Gadget::renderBound() const
+{
+	return Box3f();
+}
+
 
 Imath::Box3f Gadget::bound() const
 {
@@ -445,11 +371,6 @@ Imath::Box3f Gadget::transformedBound( const Gadget *ancestor ) const
 {
 	Box3f b = bound();
 	return transform( b, fullTransform( ancestor ) );
-}
-
-Gadget::RenderRequestSignal &Gadget::renderRequestSignal()
-{
-	return signals()->renderRequestSignal;
 }
 
 std::string Gadget::getToolTip( const IECore::LineSegment3f &position ) const

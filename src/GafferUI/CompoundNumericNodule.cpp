@@ -287,11 +287,35 @@ Imath::Box3f CompoundNumericNodule::bound() const
 	}
 }
 
-void CompoundNumericNodule::doRenderLayer( Layer layer, const Style *style ) const
+void CompoundNumericNodule::renderLayer( Layer layer, const Style *style, RenderReason reason ) const
 {
 	if( !noduleLayout() )
 	{
-		StandardNodule::doRenderLayer( layer, style );
+		StandardNodule::renderLayer( layer, style, reason );
+	}
+}
+
+unsigned CompoundNumericNodule::layerMask() const
+{
+	if( !noduleLayout() )
+	{
+		return StandardNodule::layerMask();
+	}
+	else
+	{
+		return 0;
+	}
+}
+
+Imath::Box3f CompoundNumericNodule::renderBound() const
+{
+	if( !noduleLayout() )
+	{
+		return StandardNodule::renderBound();
+	}
+	else
+	{
+		return Box3f();
 	}
 }
 

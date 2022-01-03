@@ -44,6 +44,7 @@
 #include "GafferImage/DeepState.h"
 #include "GafferImage/Format.h"
 #include "GafferImage/Grade.h"
+#include "GafferImage/Saturation.h"
 #include "GafferImage/ImageProcessor.h"
 
 #include "GafferUI/Gadget.h"
@@ -56,6 +57,8 @@
 #include "IECoreGL/Shader.h"
 
 #include "OpenColorIO/OpenColorIO.h"
+
+#include "boost/functional/hash.hpp"
 
 #include "tbb/concurrent_unordered_map.h"
 #include "tbb/spin_mutex.h"
@@ -163,7 +166,9 @@ class GAFFERIMAGEUI_API ImageGadget : public GafferUI::Gadget
 
 	protected :
 
-		void doRenderLayer( Layer layer, const GafferUI::Style *style ) const override;
+		void renderLayer( Layer layer, const GafferUI::Style *style, RenderReason reason ) const override;
+		unsigned layerMask() const override;
+		Imath::Box3f renderBound() const override;
 
 	private :
 
@@ -194,6 +199,7 @@ class GAFFERIMAGEUI_API ImageGadget : public GafferUI::Gadget
 		float m_gamma;
 
 		GafferImage::DeepStatePtr m_deepStateNode;
+		GafferImage::SaturationPtr m_saturationNode;
 		GafferImage::ClampPtr m_clampNode;
 		GafferImage::GradePtr m_gradeNode;
 		GafferImage::ImageProcessorPtr m_displayTransform;
@@ -252,6 +258,21 @@ class GAFFERIMAGEUI_API ImageGadget : public GafferUI::Gadget
 				return tileOrigin == rhs.tileOrigin && channelName == rhs.channelName;
 			}
 
+			struct Hash
+			{
+				size_t operator() ( const TileIndex &tileIndex ) const
+				{
+					size_t result = 0;
+					boost::hash_combine( result, tileIndex.tileOrigin.x );
+					boost::hash_combine( result, tileIndex.tileOrigin.y );
+					// This is hashing by pointer address, not string contents,
+					// and is sufficient because all equal InternedStrings are
+					// guaranteed to have the same pointers.
+					boost::hash_combine( result, tileIndex.channelName.c_str() );
+					return result;
+				}
+			};
+
 			Imath::V2i tileOrigin;
 			IECore::InternedString channelName;
 		};
@@ -291,10 +312,8 @@ class GAFFERIMAGEUI_API ImageGadget : public GafferUI::Gadget
 
 		};
 
-		typedef tbb::concurrent_unordered_map<TileIndex, Tile> Tiles;
+		typedef tbb::concurrent_unordered_map<TileIndex, Tile, TileIndex::Hash> Tiles;
 		mutable Tiles m_tiles;
-
-		friend size_t tbb_hasher( const ImageGadget::TileIndex &tileIndex );
 
 		// Tile update. We update tiles asynchronously from background
 		// threads.
@@ -319,13 +338,6 @@ class GAFFERIMAGEUI_API ImageGadget : public GafferUI::Gadget
 };
 
 IE_CORE_DECLAREPTR( ImageGadget )
-
-size_t tbb_hasher( const ImageGadget::TileIndex &tileIndex );
-
-[[deprecated("Use `ImageGadget::Iterator` instead")]]
-typedef Gaffer::FilteredChildIterator<Gaffer::TypePredicate<ImageGadget> > ImageGadgetIterator;
-[[deprecated("Use `ImageGadget::RecursiveIterator` instead")]]
-typedef Gaffer::FilteredRecursiveChildIterator<Gaffer::TypePredicate<ImageGadget> > RecursiveImageGadgetIterator;
 
 } // namespace GafferImageUI
 

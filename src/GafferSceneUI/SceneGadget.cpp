@@ -85,7 +85,7 @@ SceneGadget::SceneGadget()
 	setOpenGLOptions( openGLOptions.get() );
 
 	m_controller.updateRequiredSignal().connect(
-		boost::bind( &SceneGadget::requestRender, this )
+		boost::bind( &SceneGadget::dirty, this, DirtyType::Layout )
 	);
 
 	visibilityChangedSignal().connect( boost::bind( &SceneGadget::visibilityChanged, this ) );
@@ -429,7 +429,21 @@ void SceneGadget::setSelection( const IECore::PathMatcher &selection )
 
 Imath::Box3f SceneGadget::selectionBound() const
 {
-	DataPtr d = m_renderer->command( "gl:queryBound", { { "selection", new BoolData( true ) } } );
+	return bound( true, nullptr );
+}
+
+Imath::Box3f SceneGadget::bound( bool selected, const PathMatcher *omitted ) const
+{
+	DataPtr d;
+	if( omitted )
+	{
+		d = m_renderer->command( "gl:queryBound", { { "selection", new BoolData( selected ) }, { "omitted", new PathMatcherData( *omitted ) } } );
+	}
+	else
+	{
+		d = m_renderer->command( "gl:queryBound", { { "selection", new BoolData( selected ) } } );
+	}
+
 	return static_cast<Box3fData *>( d.get() )->readable();
 }
 
@@ -460,20 +474,34 @@ Imath::Box3f SceneGadget::bound() const
 	return static_cast<Box3fData *>( d.get() )->readable();
 }
 
-void SceneGadget::doRenderLayer( Layer layer, const GafferUI::Style *style ) const
+void SceneGadget::renderLayer( Layer layer, const GafferUI::Style *style, RenderReason reason ) const
 {
 	if( layer != Layer::Main )
 	{
 		return;
 	}
 
-	if( IECoreGL::Selector::currentSelector() )
+	if( isSelectionRender( reason ) )
 	{
 		return;
 	}
 
 	const_cast<SceneGadget *>( this )->updateRenderer();
 	renderScene();
+}
+
+unsigned SceneGadget::layerMask() const
+{
+	return (unsigned)Layer::Main;
+}
+
+Imath::Box3f SceneGadget::renderBound() const
+{
+	// The SceneGadget can render things outside it's layout, such as a Camera frustum, so it
+	// needs an infinite render bound
+	Box3f b;
+	b.makeInfinite();
+	return b;
 }
 
 void SceneGadget::updateRenderer()

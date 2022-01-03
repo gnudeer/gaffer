@@ -114,20 +114,22 @@ class GAFFERUI_API NodeGadget : public Gadget
 			static NodeGadgetPtr creator( Gaffer::NodePtr node ) { return new T( node ); };
 		};
 
+		virtual void activeForFocusNode( bool active );
+
+		friend class GraphGadget;
+
+		bool m_active;
+
 	private :
 
 		Gaffer::Node *m_node;
 		NoduleSignal m_noduleAddedSignal;
 		NoduleSignal m_noduleRemovedSignal;
 
+
 };
 
 IE_CORE_DECLAREPTR( NodeGadget );
-
-[[deprecated("Use `NodeGadget::Iterator` instead")]]
-typedef Gaffer::FilteredChildIterator<Gaffer::TypePredicate<NodeGadget> > NodeGadgetIterator;
-[[deprecated("Use `NodeGadget::RecursiveIterator` instead")]]
-typedef Gaffer::FilteredRecursiveChildIterator<Gaffer::TypePredicate<NodeGadget> > RecursiveNodeGadgetIterator;
 
 } // namespace GafferUI
 

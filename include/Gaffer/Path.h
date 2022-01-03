@@ -63,6 +63,7 @@ namespace Gaffer
 
 IE_CORE_FORWARDDECLARE( Path )
 IE_CORE_FORWARDDECLARE( PathFilter )
+IE_CORE_FORWARDDECLARE( Plug )
 
 /// The Path base class provides an abstraction for traversing a hierarchy
 /// of items by name, and retrieving properties from them. Examples of intended
@@ -95,27 +96,36 @@ class GAFFER_API Path : public IECore::RunTimeTyped
 
 		/// Returns true if this path is valid - ie references something
 		/// which actually exists.
-		virtual bool isValid() const;
+		virtual bool isValid( const IECore::Canceller *canceller = nullptr ) const;
 
 		/// Returns true if this path can never have child Paths.
-		virtual bool isLeaf() const;
+		virtual bool isLeaf( const IECore::Canceller *canceller = nullptr ) const;
 
 		/// Fills the vector with the names of all the properties queryable via property().
 		/// Derived class implementations must call the base class implementation first.
-		virtual void propertyNames( std::vector<IECore::InternedString> &names ) const;
+		virtual void propertyNames( std::vector<IECore::InternedString> &names, const IECore::Canceller *canceller = nullptr ) const;
 		/// Queries a property, whose name must have first been retrieved via propertyNames().
 		/// Derived class implementations should fall back to the base class implementation for
 		/// any unrecognised names. Returns null for unknown properties. May return null for invalid paths.
-		virtual IECore::ConstRunTimeTypedPtr property( const IECore::InternedString &name ) const;
+		virtual IECore::ConstRunTimeTypedPtr property( const IECore::InternedString &name, const IECore::Canceller *canceller = nullptr ) const;
 
 		/// Returns the parent of this path, or None if the path
 		/// has no parent (is the root).
 		PathPtr parent() const;
 
-		/// Fills the vector with Path instances representing all
-		/// the children of this path. Note that an empty list may
-		/// be returned even if isLeaf() is false.
-		size_t children( std::vector<PathPtr> &children ) const;
+		/// Fills the vector with Path instances representing all the children
+		/// of this path. Note that an empty list may be returned even if
+		/// isLeaf() is false.
+		///
+		/// > Caution : This is a flawed API. It is possible to implement
+		/// > `children()` to return children of a different type than
+		/// > this, but the type change cannot be reverted by `parent()`,
+		/// > nor repeated by methods like `append()` and `setFromString()`.
+		/// > Changing type in `children()` is not supported by UI components
+		/// > such as PathListingWidget and PathChooserWidget.
+		///
+		/// \todo Replace with a `childNames()` method.
+		size_t children( std::vector<PathPtr> &children, const IECore::Canceller *canceller = nullptr ) const;
 
 		void setFilter( PathFilterPtr filter );
 		/// Filter may be null.
@@ -175,6 +185,13 @@ class GAFFER_API Path : public IECore::RunTimeTyped
 		bool operator == ( const Path &other ) const;
 		bool operator != ( const Path &other ) const;
 
+		/// Must be implemented by Paths which access node graphs. The result
+		/// must be suitable for pasing to `ParallelAlgo::callOnBackgroundThread()` by
+		/// code which will query the Path in the background. This allows the background
+		/// processing to be cancelled before node graph edits that affect the Path are
+		/// made.
+		virtual const Plug *cancellationSubject() const;
+
 	protected :
 
 		/// The subclass specific part of children(). This must be implemented
@@ -184,7 +201,7 @@ class GAFFER_API Path : public IECore::RunTimeTyped
 		/// seems incredibly wasteful. Perhaps it would be better to have a
 		/// virtual childNames() method, and then implement filtering by manipulating
 		/// a single path and returning copies for the ones that passed?
-		virtual void doChildren( std::vector<PathPtr> &children ) const;
+		virtual void doChildren( std::vector<PathPtr> &children, const IECore::Canceller *canceller ) const;
 
 		/// May be called by subclasses to signify that the path has changed
 		/// and to emit pathChangedSignal() if necessary. Note that it can be

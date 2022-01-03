@@ -135,7 +135,8 @@
 				'soloChannel0',
 				'soloChannel1',
 				'soloChannel2',
-				'soloChannel3'
+				'soloChannel3',
+				'soloChannel-2'
 			]
 
 		},
@@ -312,11 +313,10 @@
 		'menuIndicatorDisabled',
 		'minus',
 		'navigationArrow',
-		'nodeSetDriverNodeSelection',
-		'nodeSetDriverNodeSet',
-		'nodeSetDrivertestMode',
+		'nodeSetNodeSelection',
 		'nodeSetNumericBookmarkSet',
 		'nodeSetStandardSet',
+		'nodeSetFocusNode',
 		'plugAdder',
 		'plugAdderHighlighted',
 		'plus',
@@ -355,11 +355,17 @@
 		'scrollToBottom',
 		'searchFocusOn',
 		'searchFocusOff',
+		'viewerSelectPrompt',
+		'viewerFocusPrompt',
 		'clearSearch',
 		'lutGPU',
 		'lutCPU',
 		'editDisabled',
 		'editOff',
-		'editOn'
+		'editOn',
+		'focusOn',
+		'focusOff',
+		'focusOnHover',
+		'focusOffHover'
 	]
 }

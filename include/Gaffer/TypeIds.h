@@ -140,6 +140,8 @@ enum TypeId
 	EditScopeTypeId = 110093,
 	MessagesDataTypeId = 110094,
 	M33fVectorDataPlugTypeId = 110095,
+	ScriptNodeFocusSetTypeId = 110096,
+	AnimationKeyTypeId = 110097,
 
 	LastTypeId = 110159,
 

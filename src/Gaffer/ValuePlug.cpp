@@ -235,7 +235,8 @@ class ValuePlug::HashProcess : public Process
 			// using a HashProcess instance.
 
 			const ComputeNode *computeNode = IECore::runTimeCast<const ComputeNode>( p->node() );
-			const HashProcessKey processKey( p, plug, Context::current(), p->m_dirtyCount, computeNode, computeNode ? computeNode->hashCachePolicy( p ) : CachePolicy::Uncached );
+			const Context *currentContext = Context::current();
+			const HashProcessKey processKey( p, plug, currentContext, p->m_dirtyCount, computeNode, computeNode ? computeNode->hashCachePolicy( p ) : CachePolicy::Uncached );
 
 			if( processKey.cachePolicy == CachePolicy::Uncached )
 			{
@@ -247,10 +248,10 @@ class ValuePlug::HashProcess : public Process
 				// Perform any pending adjustments to our thread-local cache.
 
 				ThreadData &threadData = g_threadData.local();
-				if( threadData.clearCache )
+				if( threadData.clearCache.load( std::memory_order_acquire ) )
 				{
 					threadData.cache.clear();
-					threadData.clearCache = 0;
+					threadData.clearCache.store( 0, std::memory_order_release );
 				}
 
 				if( threadData.cache.getMaxCost() != g_cacheSizeLimit )
@@ -261,15 +262,15 @@ class ValuePlug::HashProcess : public Process
 				// And then look up the result in our cache.
 				if( g_hashCacheMode == HashCacheMode::Standard )
 				{
-					return threadData.cache.get( processKey );
+					return threadData.cache.get( processKey, currentContext->canceller() );
 				}
 				else if( g_hashCacheMode == HashCacheMode::Checked )
 				{
 					HashProcessKey legacyProcessKey( processKey );
 					legacyProcessKey.dirtyCount = g_legacyGlobalDirtyCount + DIRTY_COUNT_RANGE_MAX + 1;
 
-					const IECore::MurmurHash check = threadData.cache.get( legacyProcessKey );
-					const IECore::MurmurHash result = threadData.cache.get( processKey );
+					const IECore::MurmurHash check = threadData.cache.get( legacyProcessKey, currentContext->canceller() );
+					const IECore::MurmurHash result = threadData.cache.get( processKey, currentContext->canceller() );
 
 					if( result != check )
 					{
@@ -282,7 +283,7 @@ class ValuePlug::HashProcess : public Process
 						}
 						catch( ... )
 						{
-							ProcessException::wrapCurrentException( processKey.plug, Context::current(), staticType );
+							ProcessException::wrapCurrentException( processKey.plug, currentContext, staticType );
 						}
 					}
 					return result;
@@ -293,7 +294,7 @@ class ValuePlug::HashProcess : public Process
 					HashProcessKey legacyProcessKey( processKey );
 					legacyProcessKey.dirtyCount = g_legacyGlobalDirtyCount + DIRTY_COUNT_RANGE_MAX + 1;
 
-					return threadData.cache.get( legacyProcessKey );
+					return threadData.cache.get( legacyProcessKey, currentContext->canceller() );
 				}
 			}
 		}
@@ -327,7 +328,7 @@ class ValuePlug::HashProcess : public Process
 				// a graph while a computation is being performed with it, and
 				// we know that the plug requesting the clear will be removed
 				// from the cache before the next computation starts.
-				it->clearCache = 1;
+				it->clearCache.store( 1, std::memory_order_release );
 			}
 		}
 
@@ -390,8 +391,11 @@ class ValuePlug::HashProcess : public Process
 			}
 		}
 
-		static IECore::MurmurHash globalCacheGetter( const HashProcessKey &key, size_t &cost )
+		static IECore::MurmurHash globalCacheGetter( const HashProcessKey &key, size_t &cost, const IECore::Canceller *canceller )
 		{
+			// Canceller will be passed to `ComputeNode::hash()` implicitly
+			// via the context.
+			assert( canceller == Context::current()->canceller() );
 			cost = 1;
 			IECore::MurmurHash result;
 			switch( key.cachePolicy )
@@ -421,14 +425,15 @@ class ValuePlug::HashProcess : public Process
 			return result;
 		}
 
-		static IECore::MurmurHash localCacheGetter( const HashProcessKey &key, size_t &cost )
+		static IECore::MurmurHash localCacheGetter( const HashProcessKey &key, size_t &cost, const IECore::Canceller *canceller )
 		{
+			assert( canceller == Context::current()->canceller() );
 			cost = 1;
 			switch( key.cachePolicy )
 			{
 				case CachePolicy::TaskCollaboration :
 				case CachePolicy::TaskIsolation :
-					return g_globalCache.get( key );
+					return g_globalCache.get( key, canceller );
 				default :
 				{
 					assert( key.cachePolicy != CachePolicy::Uncached );
@@ -457,11 +462,11 @@ class ValuePlug::HashProcess : public Process
 			ThreadData() : cache( localCacheGetter, g_cacheSizeLimit, Cache::RemovalCallback(), /* cacheErrors = */ false ), clearCache( 0 ) {}
 			Cache cache;
 			// Flag to request that hashCache be cleared.
-			tbb::atomic<int> clearCache;
+			std::atomic_int clearCache;
 		};
 
 		static tbb::enumerable_thread_specific<ThreadData, tbb::cache_aligned_allocator<ThreadData>, tbb::ets_key_per_instance > g_threadData;
-		static tbb::atomic<size_t> g_cacheSizeLimit;
+		static std::atomic_size_t g_cacheSizeLimit;
 
 		IECore::MurmurHash m_result;
 
@@ -470,7 +475,7 @@ class ValuePlug::HashProcess : public Process
 const IECore::InternedString ValuePlug::HashProcess::staticType( "computeNode:hash" );
 tbb::enumerable_thread_specific<ValuePlug::HashProcess::ThreadData, tbb::cache_aligned_allocator<ValuePlug::HashProcess::ThreadData>, tbb::ets_key_per_instance > ValuePlug::HashProcess::g_threadData;
 // Default limit corresponds to a cost of roughly 25Mb per thread.
-tbb::atomic<size_t> ValuePlug::HashProcess::g_cacheSizeLimit = 128000;
+std::atomic_size_t ValuePlug::HashProcess::g_cacheSizeLimit( 128000 );
 ValuePlug::HashProcess::GlobalCache ValuePlug::HashProcess::g_globalCache( globalCacheGetter, g_cacheSizeLimit, Cache::RemovalCallback(), /* cacheErrors = */ false );
 std::atomic<uint64_t> ValuePlug::HashProcess::g_legacyGlobalDirtyCount( 0 );
 ValuePlug::HashCacheMode ValuePlug::HashProcess::g_hashCacheMode( defaultHashCacheMode() );
@@ -611,7 +616,7 @@ class ValuePlug::ComputeProcess : public Process
 			}
 			else
 			{
-				return g_cache.get( processKey );
+				return g_cache.get( processKey, Context::current()->canceller() );
 			}
 		}
 
@@ -671,8 +676,11 @@ class ValuePlug::ComputeProcess : public Process
 			}
 		}
 
-		static IECore::ConstObjectPtr cacheGetter( const ComputeProcessKey &key, size_t &cost )
+		static IECore::ConstObjectPtr cacheGetter( const ComputeProcessKey &key, size_t &cost, const IECore::Canceller *canceller )
 		{
+			// Canceller will be passed to `ComputeNode::hash()` implicitly
+			// via the context.
+			assert( canceller == Context::current()->canceller() );
 			IECore::ConstObjectPtr result;
 			switch( key.cachePolicy )
 			{

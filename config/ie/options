@@ -93,7 +93,13 @@ pythonVersion = getOption( "PYTHON_VERSION", cortexReg["preferredPythonVersion"]
 targetApp = getOption( "APP", None )
 targetAppVersion = None
 
-gafferReg = IEEnv.registry["apps"]["gaffer"][gafferRegistryVersion()][IEEnv.platform()]
+if int( getOption( "IE_STOMP_VERSION", "0" ) ):
+	registryVersion = os.environ["GAFFER_COMPATIBILITY_VERSION"] + ".0.0"
+	GAFFER_MILESTONE_VERSION, GAFFER_MAJOR_VERSION, GAFFER_MINOR_VERSION, GAFFER_PATH_VERSION = os.environ["GAFFER_VERSION"].rstrip( "dev" ).split( "." )
+else:
+	registryVersion = gafferRegistryVersion()
+
+gafferReg = IEEnv.registry["apps"]["gaffer"][registryVersion][IEEnv.platform()]
 gafferBuildVariant = getOption( "GAFFER_BUILD_VARIANT", "py2" )
 qtVersion = gafferReg["qtVersion"]
 pysideVersion = gafferReg.get( "pysideVersion", "2.0.0" )
@@ -441,6 +447,7 @@ ENV_VARS_TO_IMPORT = " ".join( [
 	"DOXYGEN_VERSION",
 	"OSL_VERSION",
 	"OCIO",
+	"QT_VERSION",
 	"QT_QPA_PLATFORM_PLUGIN_PATH",
 	"GAFFER_JEMALLOC",
 ] )
@@ -456,6 +463,7 @@ os.environ["IEENV_DISABLE_WRAPPER_ENV_CHECK"] = "1"
 # disable jemalloc for doc builds. the docs run with the native gaffer binary and it can't locate our custom libjemalloc
 os.environ["GAFFER_JEMALLOC"] = "0"
 # required to run gaffer gui for the doc builds
+os.environ["QT_VERSION"] = qtVersion
 os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = os.path.join( IEEnv.Environment.rootPath(), "apps", "qt", qtVersion, IEEnv.platform(), compiler, compilerVersion, "plugins" )
 
 # speed up the build a bit hopefully.

@@ -50,8 +50,6 @@
 #include "Gaffer/ScriptNode.h"
 #include "Gaffer/UndoScope.h"
 
-#include "IECoreGL/Selector.h"
-
 #include "IECore/AngleConversion.h"
 
 #include "boost/bind.hpp"
@@ -136,7 +134,7 @@ void StandardNodule::updateDragEndPoint( const Imath::V3f position, const Imath:
 	m_dragPosition = position;
 	m_dragTangent = tangent;
 	m_draggingConnection = true;
-	dirty( DirtyType::Render );
+	dirty( DirtyType::RenderBound );
 }
 
 void StandardNodule::createConnection( Gaffer::Plug *endpoint )
@@ -153,36 +151,14 @@ void StandardNodule::createConnection( Gaffer::Plug *endpoint )
 	}
 }
 
-bool StandardNodule::hasLayer( Layer layer ) const
-{
-	if( children().size() )
-	{
-		return true;
-	}
-
-	switch( layer )
-	{
-		case GraphLayer::Connections :
-			return m_draggingConnection;
-		case GraphLayer::Nodes :
-			return !getHighlighted();
-		case GraphLayer::Highlighting :
-			return getHighlighted();
-		case GraphLayer::Overlay :
-			return m_labelVisible && !IECoreGL::Selector::currentSelector();
-		default :
-			return false;
-	}
-}
-
-void StandardNodule::doRenderLayer( Layer layer, const Style *style ) const
+void StandardNodule::renderLayer( Layer layer, const Style *style, RenderReason reason ) const
 {
 	switch( layer )
 	{
 
 		case GraphLayer::Connections :
 
-			if( m_draggingConnection && !IECoreGL::Selector::currentSelector() )
+			if( m_draggingConnection && !isSelectionRender( reason ) )
 			{
 				V3f srcTangent( 0.0f, 1.0f, 0.0f );
 				if( const NodeGadget *nodeGadget = ancestor<NodeGadget>() )
@@ -211,7 +187,7 @@ void StandardNodule::doRenderLayer( Layer layer, const Style *style ) const
 
 		case GraphLayer::Overlay :
 
-			if( m_labelVisible && !IECoreGL::Selector::currentSelector() )
+			if( m_labelVisible && !isSelectionRender( reason ) )
 			{
 				renderLabel( style );
 			}
@@ -224,6 +200,27 @@ void StandardNodule::doRenderLayer( Layer layer, const Style *style ) const
 	}
 
 	// if the nodule isn't highlighted it will be drawn in the normal, non-overlayed manner
+}
+
+unsigned StandardNodule::layerMask() const
+{
+	return GraphLayer::Connections | GraphLayer::Nodes | GraphLayer::Highlighting | GraphLayer::Overlay;
+}
+
+Imath::Box3f StandardNodule::renderBound() const
+{
+	if( m_draggingConnection )
+	{
+		// When dragging a connection, we could drag it anywhere, and need to render it
+		Box3f b;
+		b.makeInfinite();
+		return b;
+	}
+	else
+	{
+		// Usual max size we render at ( when highlighted )
+		return Box3f( V3f( -1, -1, 0 ), V3f( 1, 1, 0 ) );
+	}
 }
 
 void StandardNodule::renderLabel( const Style *style ) const
@@ -413,13 +410,14 @@ bool StandardNodule::dragLeave( GadgetPtr gadget, const DragDropEvent &event )
 		{
 			setCompatibleLabelsVisible( event, false );
 		}
+		dirty( DirtyType::Render );
 	}
 	else if( !event.destinationGadget )
 	{
 		m_draggingConnection = false;
+		dirty( DirtyType::RenderBound );
 	}
 
-	dirty( DirtyType::Render );
 	return true;
 }
 
@@ -427,6 +425,7 @@ bool StandardNodule::dragEnd( GadgetPtr gadget, const DragDropEvent &event )
 {
 	GafferUI::Pointer::setCurrent( "" );
 	m_draggingConnection = false;
+	dirty( DirtyType::RenderBound );
 	setHighlighted( false );
 	return true;
 }

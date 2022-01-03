@@ -40,8 +40,6 @@
 #include "GafferUI/Style.h"
 #include "GafferUI/ViewportGadget.h"
 
-#include "IECoreGL/Selector.h"
-
 #include "IECore/Export.h"
 #include "IECore/NullObject.h"
 
@@ -122,16 +120,11 @@ Imath::Box3f Handle::bound() const
 	return Box3f( V3f( -1 ), V3f( 1 ) );
 }
 
-bool Handle::hasLayer( Layer layer ) const
-{
-	return layer == Layer::MidFront;
-}
-
-void Handle::doRenderLayer( Layer layer, const Style *style ) const
+void Handle::renderLayer( Layer layer, const Style *style, RenderReason reason ) const
 {
 	if( m_visibleOnHover )
 	{
-		if( !enabled() || (!m_hovering && !IECoreGL::Selector::currentSelector() ) )
+		if( !enabled() || (!m_hovering && !isSelectionRender( reason ) ) )
 		{
 			return;
 		}
@@ -147,6 +140,19 @@ void Handle::doRenderLayer( Layer layer, const Style *style ) const
 	renderHandle( style, state );
 
 	glPopMatrix();
+}
+
+unsigned Handle::layerMask() const
+{
+	return (unsigned)Layer::MidFront;
+}
+
+Imath::Box3f Handle::renderBound() const
+{
+	// Having a raster scale makes our bound somewhat meaningless
+	Box3f b;
+	b.makeInfinite();
+	return b;
 }
 
 Imath::V3f Handle::rasterScaleFactor() const

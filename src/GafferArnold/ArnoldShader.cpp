@@ -52,7 +52,7 @@
 
 #include "boost/format.hpp"
 
-#include "ai.h"
+#include "ai_metadata.h"
 
 using namespace std;
 using namespace boost;
@@ -184,7 +184,7 @@ namespace {
 	const AtString g_shaderTypeArnoldString( "shaderType" );
 }
 
-static IECore::ConstCompoundDataPtr metadataGetter( const std::string &key, size_t &cost )
+static IECore::ConstCompoundDataPtr metadataGetter( const std::string &key, size_t &cost, const IECore::Canceller *canceller )
 {
 	IECoreArnold::UniverseBlock arnoldUniverse( /* writable = */ false );
 

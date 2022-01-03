@@ -37,6 +37,7 @@
 #ifndef GAFFER_CONTEXT_H
 #define GAFFER_CONTEXT_H
 
+#include "Gaffer/CatchingSignalCombiner.h"
 #include "Gaffer/Export.h"
 #include "Gaffer/ThreadState.h"
 
@@ -92,7 +93,7 @@ class GAFFER_API Context : public IECore::RefCounted
 
 		IE_CORE_DECLAREMEMBERPTR( Context )
 
-		typedef boost::signal<void ( const Context *context, const IECore::InternedString & )> ChangedSignal;
+		typedef boost::signal<void ( const Context *context, const IECore::InternedString & ), CatchingSignalCombiner<void>> ChangedSignal;
 
 		/// Sets a variable to the specified value. A copy is taken so that
 		/// subsequent changes to `value` do not affect the context.
@@ -169,7 +170,7 @@ class GAFFER_API Context : public IECore::RefCounted
 
 		/// Return the hash of a particular variable ( or a default MurmurHash() if not present )
 		/// Note that this hash includes the name of the variable
-		inline IECore::MurmurHash variableHash( const IECore::InternedString &name ) const;
+		IECore::MurmurHash variableHash( const IECore::InternedString &name ) const;
 
 		bool operator == ( const Context &other ) const;
 		bool operator != ( const Context &other ) const;
@@ -184,7 +185,7 @@ class GAFFER_API Context : public IECore::RefCounted
 		/// Used to request cancellation of long running background operations.
 		/// May be null. Nodes that perform expensive work should check for
 		/// cancellation periodically by calling `Canceller::check( context->canceller() )`.
-		inline const IECore::Canceller *canceller() const;
+		const IECore::Canceller *canceller() const;
 
 		/// The Scope class is used to push and pop the current context on
 		/// the calling thread.
@@ -256,6 +257,11 @@ class GAFFER_API Context : public IECore::RefCounted
 				void remove( const IECore::InternedString &name );
 				void removeMatching( const IECore::StringAlgo::MatchPattern &pattern );
 
+				/// Sets the canceller. It is the caller's responsibility to
+				/// ensure that the pointer remains valid for the lifetime
+				/// of the EditableScope.
+				void setCanceller( const IECore::Canceller *canceller );
+
 				const Context *context() const { return m_context.get(); }
 
 			private :
@@ -304,7 +310,7 @@ class GAFFER_API Context : public IECore::RefCounted
 		struct Value
 		{
 
-			inline Value();
+			Value();
 			template<typename T>
 			Value( const IECore::InternedString &name, const T *value );
 			Value( const IECore::InternedString &name, const IECore::Data *value );
@@ -313,7 +319,7 @@ class GAFFER_API Context : public IECore::RefCounted
 			Value &operator = ( const Value &other ) = default;
 
 			template<typename T>
-			inline const T &value() const;
+			const T &value() const;
 			IECore::TypeId typeId() const { return m_typeId; }
 			const void *rawValue() const { return m_value; }
 			// Note : This includes the hash of the name passed
@@ -362,11 +368,11 @@ class GAFFER_API Context : public IECore::RefCounted
 		// manage ownership in any way. Returns true if the value was assigned,
 		// and false if the value was not (due to it being equal to the
 		// previously stored value).
-		inline bool internalSet( const IECore::InternedString &name, const Value &value );
+		bool internalSet( const IECore::InternedString &name, const Value &value );
 		// Throws if variable doesn't exist.
-		inline const Value &internalGet( const IECore::InternedString &name ) const;
+		const Value &internalGet( const IECore::InternedString &name ) const;
 		// Returns nullptr if variable doesn't exist.
-		inline const Value *internalGetIfExists( const IECore::InternedString &name ) const;
+		const Value *internalGetIfExists( const IECore::InternedString &name ) const;
 
 		typedef boost::container::flat_map<IECore::InternedString, Value> Map;
 

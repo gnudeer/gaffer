@@ -58,26 +58,25 @@ class GAFFERUI_API TextGadget : public Gadget
 		const std::string &getText() const;
 		void setText( const std::string &text );
 
+		void setDimmed( bool dimmed );
+
 		Imath::Box3f bound() const override;
 
 	protected :
 
-		void doRenderLayer( Layer layer, const Style *style ) const override;
-		bool hasLayer( Layer layer ) const override { return layer == Layer::Main; };
+		void renderLayer( Layer layer, const Style *style, RenderReason reason ) const override;
+		unsigned layerMask() const override;
+		Imath::Box3f renderBound() const override;
 
 	private :
 
 		std::string m_text;
 		Imath::Box3f m_bound;
+		bool m_dimmed;
 
 };
 
 IE_CORE_DECLAREPTR( TextGadget );
-
-[[deprecated("Use `TextGadget::Iterator` instead")]]
-typedef Gaffer::FilteredChildIterator<Gaffer::TypePredicate<TextGadget> > TextGadgetIterator;
-[[deprecated("Use `TextGadget::RecursiveIterator` instead")]]
-typedef Gaffer::FilteredRecursiveChildIterator<Gaffer::TypePredicate<TextGadget> > RecursiveTextGadgetIterator;
 
 } // namespace GafferUI
 
